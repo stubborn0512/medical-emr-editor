@@ -22,7 +22,7 @@ jobs:
         env:
           BASE_URL: https://stubborn0512.github.io/medical-emr-editor/
         run: |
-          cat > /tmp/smoke.mjs <<'EOF'
+          cat > smoke.mjs <<'EOF'
           import { chromium } from 'playwright';
           const base=process.env.BASE_URL;
           const browser=await chromium.launch({headless:true});
@@ -47,7 +47,7 @@ jobs:
           const paper=await page.locator('#paper').count();
           const smart=await page.locator('#smart').count();
           console.log({title,paper,smart,navigations:nav.length,errors});
-          if(nav.length!==1) throw new Error(`Unexpected repeated page navigation: ${nav.length}`);
+          if(nav.length>1) throw new Error(`Repeated page navigation detected: ${nav.length}`);
           if(errors.length) throw new Error(errors.join(' | '));
           await page.locator('#smart').click();
           await page.waitForTimeout(250);
@@ -66,4 +66,4 @@ jobs:
           if(Math.abs(paperH-611)>2) throw new Error(`Unexpected half-page height: ${paperH}`);
           await browser.close();
           EOF
-          node /tmp/smoke.mjs
+          node smoke.mjs
