@@ -22,11 +22,12 @@ jobs:
         env:
           BASE_URL: https://stubborn0512.github.io/medical-emr-editor/
         run: |
+          mkdir -p artifacts
           cat > smoke.mjs <<'EOF'
           import { chromium } from 'playwright';
           const base=process.env.BASE_URL;
           const browser=await chromium.launch({headless:true});
-          const page=await browser.newPage();
+          const page=await browser.newPage({viewport:{width:1600,height:900},deviceScaleFactor:1});
           const errors=[]; const nav=[];
           page.on('pageerror',e=>errors.push('pageerror: '+e.message));
           page.on('console',m=>{if(m.type()==='error') errors.push('console: '+m.text())});
@@ -46,24 +47,35 @@ jobs:
           const title=await page.title();
           const paper=await page.locator('#paper').count();
           const smart=await page.locator('#smart').count();
-          console.log({title,paper,smart,navigations:nav.length,errors});
-          if(nav.length>1) throw new Error(`Repeated page navigation detected: ${nav.length}`);
+          const navEntries=await page.evaluate(()=>performance.getEntriesByType('navigation').length);
+          await page.screenshot({path:'artifacts/initial.png'});
+          console.log({title,paper,smart,navigations:nav.length,navEntries,errors});
+          if(nav.length>1 || navEntries!==1) throw new Error(`Repeated page navigation detected: events=${nav.length}, entries=${navEntries}`);
           if(errors.length) throw new Error(errors.join(' | '));
           await page.locator('#smart').click();
           await page.waitForTimeout(250);
-          const smartDisplay=await page.locator('#smartModal').evaluate(el=>getComputedStyle(el).display);
-          if(smartDisplay!=='flex') throw new Error('Smart modal did not open');
+          if(await page.locator('#smartModal').evaluate(el=>getComputedStyle(el).display)!=='flex') throw new Error('Smart modal did not open');
           await page.locator('#smartClose').click();
           await page.waitForTimeout(150);
-          const closedDisplay=await page.locator('#smartModal').evaluate(el=>getComputedStyle(el).display);
-          if(closedDisplay==='flex') throw new Error('Smart modal did not close');
+          if(await page.locator('#smartModal').evaluate(el=>getComputedStyle(el).display)==='flex') throw new Error('Smart modal did not close');
           await page.locator('.sh[data-sh="skin"]').click();
           await page.waitForTimeout(350);
           const active=await page.locator('.sh[data-sh="skin"]').evaluate(el=>el.classList.contains('active'));
-          const paperH=await page.locator('#paper').evaluate(el=>el.getBoundingClientRect().height);
-          console.log({skinActive:active,paperHeight:paperH});
+          const paperHeight=await page.locator('#paper').evaluate(el=>el.offsetHeight);
+          const paperWidth=await page.locator('#paper').evaluate(el=>el.offsetWidth);
+          const overflow=await page.evaluate(()=>{const p=document.getElementById('paper').getBoundingClientRect();return [...document.querySelectorAll('#paper .node')].filter(n=>{const r=n.getBoundingClientRect();return r.right>p.right+1||r.bottom>p.bottom+1||r.left<p.left-1||r.top<p.top-1}).length});
+          await page.screenshot({path:'artifacts/skin.png'});
+          console.log({skinActive:active,paperHeight,paperWidth,overflow});
           if(!active) throw new Error('Skin template did not activate');
-          if(Math.abs(paperH-611)>2) throw new Error(`Unexpected half-page height: ${paperH}`);
+          if(paperWidth!==864 || paperHeight!==611) throw new Error(`Unexpected untransformed half-page size: ${paperWidth}x${paperHeight}`);
+          if(overflow>0) throw new Error(`Half-page element overflow count: ${overflow}`);
           await browser.close();
           EOF
           node smoke.mjs
+      - name: Upload browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-screenshots
+          path: artifacts/*.png
+          if-no-files-found: ignore
