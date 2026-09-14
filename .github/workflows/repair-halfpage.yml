@@ -1,0 +1,61 @@
+name: Repair half-page runtime
+on:
+  push:
+    paths:
+      - 'REPAIR_HALF_PAGE_TRIGGER.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove recursive half-page runtime patch and install safe version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          # Remove the old injected half-page CSS blocks.
+          s=re.sub(r'\n?\/\* half-page subhealth layout(?: final| v3)? \*\/.*?(?=\n<\/style>)', '', s, flags=re.S)
+          # Remove old injected half-page behavior scripts, including the MutationObserver version.
+          s=re.sub(r'\n?<script>\s*\/\* half-page subhealth behavior(?: final| v3)? \*\/.*?<\/script>', '', s, flags=re.S)
+          css='''\n/* half-page subhealth layout safe */\n.subhealth-halfpage-mode .paper{width:864px!important;height:611px!important;}\n.subhealth-halfpage-mode .stagein{width:864px;height:611px;}\n.subhealth-halfpage-mode .node[data-id="doctype"],.subhealth-halfpage-mode .node[data-id="note"],.subhealth-halfpage-mode .node[data-id="page"]{display:none!important;}\n.subhealth-halfpage-mode .node[data-id="sign"],.subhealth-halfpage-mode .node[data-id="reportDate"]{top:520px!important;}\n@media print{.subhealth-halfpage-mode .paper{width:210mm!important;height:148.5mm!important;box-shadow:none}.subhealth-halfpage-mode .stage{padding:0;overflow:visible}.subhealth-halfpage-mode .node.sel{outline:none;background:none}}\n'''
+          i=s.find('</style>')
+          if i<0: raise SystemExit('missing style closing tag')
+          if 'half-page subhealth layout safe' not in s:
+              s=s[:i]+css+s[i:]
+          safe='''<script>\n/* half-page subhealth behavior safe */\n(()=>{\n const isSub=()=>!!document.querySelector('#subhealthList .sh.active');\n const p=()=>document.getElementById('paper');\n const st=()=>document.getElementById('stagein');\n const zoom=()=>{const m=(document.getElementById('z100')?.textContent||'100%').match(/([0-9.]+)/);return m?parseFloat(m[1])/100:1};\n let lastState=null;\n const clean=()=>{if(!isSub())return;document.querySelectorAll('#paper .node').forEach(n=>{const t=n.textContent||'';if(/_{3,}/.test(t))n.textContent=t.replace(/_{3,}/g,'').trimEnd();});document.querySelectorAll('#paper .rule[data-id="subline"]').forEach(e=>e.remove());};\n const apply=()=>{const x=p(),y=st();if(!x||!y)return;const sub=isSub(),z=zoom();if(sub===lastState&&!lastState&&x.style.height==='1254px')return;document.body.classList.toggle('subhealth-halfpage-mode',sub);if(sub){x.style.width='864px';x.style.height='611px';y.style.width=(864*z)+'px';y.style.height=(611*z)+'px';clean();}else{x.style.width='864px';x.style.height='1254px';y.style.width=(864*z)+'px';y.style.height=(1254*z)+'px';}lastState=sub;};\n const bind=()=>{document.querySelectorAll('#subhealthList .sh').forEach(b=>{if(!b.dataset.hpfSafe){b.dataset.hpfSafe='1';b.addEventListener('click',()=>setTimeout(apply,60));}});['ct','us','fit','zm','zp','z100'].forEach(id=>{const b=document.getElementById(id);if(b&&!b.dataset.hpfSafe){b.dataset.hpfSafe='1';b.addEventListener('click',()=>setTimeout(apply,60));}})};\n const boot=()=>{bind();setTimeout(apply,80)};\n if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();\n window.addEventListener('resize',apply);\n document.addEventListener('click',e=>{if(e.target.closest('#subhealthList .sh'))setTimeout(apply,100)});\n})();\n</script>'''
+          s=s.replace('</body>',safe+'</body>')
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Validate repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('index.html').read_text(encoding='utf-8')
+          assert 'half-page subhealth layout safe' in s
+          assert 'half-page subhealth behavior safe' in s
+          assert 'height:148.5mm' in s
+          blocks=re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>',s,re.S|re.I)
+          for i,b in enumerate(blocks): Path(f'/tmp/editor-{i}.js').write_text(b,encoding='utf-8')
+          PY
+          for f in /tmp/editor-*.js; do node --check "$f"; done
+          echo 'safe half-page runtime validation passed'
+      - name: Commit repaired index
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          if git diff --cached --quiet; then echo 'No changes'; exit 0; fi
+          git commit -m 'fix: stop half-page runtime refresh loop'
+          git push
