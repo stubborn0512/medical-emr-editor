@@ -1,15 +1,19 @@
 name: Browser smoke test
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: ["pages build and deployment"]
+    types: [completed]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -28,21 +32,10 @@ jobs:
           const base=process.env.BASE_URL;
           const browser=await chromium.launch({headless:true});
           const page=await browser.newPage({viewport:{width:1600,height:900},deviceScaleFactor:1});
-          const errors=[]; const nav=[];
+          const errors=[];
           page.on('pageerror',e=>errors.push('pageerror: '+e.message));
           page.on('console',m=>{if(m.type()==='error') errors.push('console: '+m.text())});
-          page.on('framenavigated',f=>{if(f===page.mainFrame()) nav.push(f.url())});
-          let ready=false,last='';
-          for(let i=0;i<18;i++){
-            try{
-              await page.goto(base,{waitUntil:'domcontentloaded',timeout:15000});
-              await page.waitForTimeout(1000);
-              const has=await page.locator('#paper').count()===1 && await page.locator('#ct').count()===1;
-              if(has){ready=true;break;}
-            }catch(e){last=e.message}
-            await page.waitForTimeout(5000);
-          }
-          if(!ready) throw new Error('Deployed site never became ready: '+last);
+          await page.goto(base,{waitUntil:'domcontentloaded',timeout:30000});
           await page.waitForTimeout(2500);
           if(await page.locator('#sitePasswordGate').count()!==1) throw new Error('Site password gate missing');
           await page.locator('#sitePasswordInput').fill('incorrect');
@@ -56,9 +49,8 @@ jobs:
           const title=await page.title();
           const paper=await page.locator('#paper').count();
           const smart=await page.locator('#smart').count();
-          const navEntries=await page.evaluate(()=>performance.getEntriesByType('navigation').length);
           await page.screenshot({path:'artifacts/initial.png'});
-          console.log({title,paper,smart,navigations:nav.length,navEntries,errors});
+          console.log({title,paper,smart,errors});
           if(errors.length) throw new Error(errors.join(' | '));
           await page.locator('#smart').click();
           await page.waitForTimeout(250);
