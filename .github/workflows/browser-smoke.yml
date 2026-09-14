@@ -1,0 +1,61 @@
+name: Browser smoke test
+on:
+  workflow_run:
+    workflows: ["pages build and deployment"]
+    types: [completed]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Playwright
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-fund --no-audit playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Smoke test deployed site
+        env:
+          BASE_URL: https://stubborn0512.github.io/medical-emr-editor/
+        run: |
+          cat > /tmp/smoke.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          const base = process.env.BASE_URL;
+          const browser = await chromium.launch({headless:true});
+          const page = await browser.newPage();
+          const errors=[]; const requests=[];
+          page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
+          page.on('console', m => { if(m.type()==='error') errors.push(`console: ${m.text()}`); });
+          page.on('request', r => { if(r.isNavigationRequest() && r.url().startsWith(base)) requests.push(r.url()); });
+          await page.goto(base, {waitUntil:'domcontentloaded', timeout:30000});
+          await page.waitForTimeout(3000);
+          const title=await page.title();
+          const paper=await page.locator('#paper').count();
+          const ct=await page.locator('#ct').count();
+          const smart=await page.locator('#smart').count();
+          const visibleText=await page.locator('body').innerText();
+          console.log({title,paper,ct,smart,navigations:requests.length,errors});
+          if (paper!==1 || ct!==1 || smart!==1) throw new Error('Core editor DOM missing');
+          if (requests.length>1) throw new Error(`Unexpected repeated navigation: ${requests.length}`);
+          if (/报错|异常|SyntaxError/i.test(visibleText)) throw new Error('Error text detected on page');
+          await page.locator('#smart').click();
+          await page.waitForTimeout(300);
+          if (await page.locator('#smartModal').evaluate(el=>getComputedStyle(el).display)!=='flex') throw new Error('Smart modal did not open');
+          await page.locator('#smartClose').click();
+          await page.waitForTimeout(200);
+          if (await page.locator('#smartModal').evaluate(el=>getComputedStyle(el).display)!=='none') throw new Error('Smart modal did not close');
+          await page.locator('.sh[data-sh="skin"]').click();
+          await page.waitForTimeout(400);
+          const active=await page.locator('.sh[data-sh="skin"]').evaluate(el=>el.classList.contains('active'));
+          const paperH=await page.locator('#paper').evaluate(el=>el.getBoundingClientRect().height);
+          console.log({skinActive:active,paperHeight:paperH});
+          if(!active) throw new Error('Subhealth skin template did not activate');
+          if(Math.abs(paperH-611)>2) throw new Error(`Unexpected half-page editor height: ${paperH}`);
+          await browser.close();
+          EOF
+          node /tmp/smoke.mjs
