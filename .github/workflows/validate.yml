@@ -1,64 +1,47 @@
 name: Validate editor
-
-# Regression trigger: validate the latest deployed modal layout fix.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 permissions:
   contents: read
-
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Validate HTML structure
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          s = Path('index.html').read_text(encoding='utf-8')
-          required = [
-              '<!doctype html>',
-              'id="paper"', 'id="ct"', 'id="us"',
-              'id="print"', 'id="save"', 'id="load"',
-              'id="smart"', 'id="smartModal"'
-          ]
-          missing = [x for x in required if x.lower() not in s.lower()]
-          if missing:
-              raise SystemExit('Missing required markers: ' + ', '.join(missing))
-          if s.lower().count('<html') != 1 or s.lower().count('</html>') != 1:
-              raise SystemExit('Unexpected html tag count')
-          if s.lower().count('<body') != 1 or s.lower().count('</body>') != 1:
-              raise SystemExit('Unexpected body tag count')
-          if 'editor modal layout fix' not in s:
-              raise SystemExit('Modal layout regression CSS marker missing')
+          s=Path('index.html').read_text(encoding='utf-8')
+          required=['<!doctype html>','id="paper"','id="ct"','id="us"','id="print"','id="save"','id="load"','id="smart"','id="smartModal"','half-page subhealth layout final','half-page subhealth behavior final']
+          missing=[x for x in required if x.lower() not in s.lower()]
+          if missing: raise SystemExit('Missing required markers: '+', '.join(missing))
+          if s.lower().count('<html')!=1 or s.lower().count('</html>')!=1: raise SystemExit('Unexpected html tag count')
+          if s.lower().count('<body')!=1 or s.lower().count('</body>')!=1: raise SystemExit('Unexpected body tag count')
+          if 'height:627px' not in s or 'height:156.75mm' not in s: raise SystemExit('Half-page dimensions missing')
           print('HTML structure checks passed')
           PY
-
-      - name: Validate inline editor script
+      - name: Validate all inline editor scripts
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
           import re
-          s = Path('index.html').read_text(encoding='utf-8')
-          blocks = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', s, flags=re.S|re.I)
-          if len(blocks) != 1:
-              raise SystemExit(f'Expected exactly 1 inline script block, got {len(blocks)}')
-          Path('/tmp/editor.js').write_text(blocks[0], encoding='utf-8')
-          print('Inline script extracted')
+          s=Path('index.html').read_text(encoding='utf-8')
+          blocks=re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>',s,re.S|re.I)
+          if len(blocks)<2: raise SystemExit(f'Expected at least 2 inline script blocks, got {len(blocks)}')
+          for i,b in enumerate(blocks,1): Path(f'/tmp/editor-{i}.js').write_text(b,encoding='utf-8')
+          print(f'Extracted {len(blocks)} inline script blocks')
           PY
-          node --check /tmp/editor.js
-          echo 'Inline editor JavaScript syntax passed'
-
+          for f in /tmp/editor-*.js; do node --check "$f"; done
+          echo 'All inline JavaScript syntax checks passed'
       - name: Validate smart-identify JavaScript
         shell: bash
         run: |
@@ -66,10 +49,12 @@ jobs:
           test -f smart-identify.js
           node --check smart-identify.js
           echo 'smart-identify.js syntax check passed'
-
-      - name: Check required workflow hooks
+      - name: Check half-page regression rules
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'branches: \[main\]' .github/workflows/validate.yml
-          echo 'Workflow hooks present'
+          grep -q 'subhealth-halfpage-mode' index.html
+          grep -q 'data-id="doctype"' index.html
+          grep -q 'data-id="sign"' index.html
+          grep -q 'data-id="reportDate"' index.html
+          echo 'Half-page regression markers present'
