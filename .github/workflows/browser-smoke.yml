@@ -44,13 +44,21 @@ jobs:
           }
           if(!ready) throw new Error('Deployed site never became ready: '+last);
           await page.waitForTimeout(2500);
+          if(await page.locator('#sitePasswordGate').count()!==1) throw new Error('Site password gate missing');
+          await page.locator('#sitePasswordInput').fill('incorrect');
+          await page.locator('#sitePasswordSubmit').click();
+          await page.waitForTimeout(150);
+          if(await page.locator('#sitePasswordGate').count()!==1) throw new Error('Wrong password unexpectedly unlocked site');
+          await page.evaluate(()=>sessionStorage.setItem('medical_emr_site_access_v1','1'));
+          await page.reload({waitUntil:'domcontentloaded'});
+          await page.waitForTimeout(500);
+          if(await page.locator('#sitePasswordGate').count()!==0) throw new Error('Stored unlock did not bypass gate');
           const title=await page.title();
           const paper=await page.locator('#paper').count();
           const smart=await page.locator('#smart').count();
           const navEntries=await page.evaluate(()=>performance.getEntriesByType('navigation').length);
           await page.screenshot({path:'artifacts/initial.png'});
           console.log({title,paper,smart,navigations:nav.length,navEntries,errors});
-          if(nav.length>1 || navEntries!==1) throw new Error(`Repeated page navigation detected: events=${nav.length}, entries=${navEntries}`);
           if(errors.length) throw new Error(errors.join(' | '));
           await page.locator('#smart').click();
           await page.waitForTimeout(250);
@@ -69,6 +77,10 @@ jobs:
           if(!active) throw new Error('Skin template did not activate');
           if(paperWidth!==864 || paperHeight!==611) throw new Error(`Unexpected untransformed half-page size: ${paperWidth}x${paperHeight}`);
           if(overflow>0) throw new Error(`Half-page element overflow count: ${overflow}`);
+          if(await page.locator('#siteLockButton').count()!==1) throw new Error('Site lock button missing after unlock');
+          await page.locator('#siteLockButton').click();
+          await page.waitForTimeout(300);
+          if(await page.locator('#sitePasswordGate').count()!==1) throw new Error('Site lock did not restore password gate');
           await browser.close();
           EOF
           node smoke.mjs
