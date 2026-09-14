@@ -19,35 +19,60 @@ jobs:
           from pathlib import Path
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
-          marker = '/* half-page subhealth layout */'
-          css = '''\n/* half-page subhealth layout */\n.subhealth-halfpage-mode .paper{width:816px;height:594px;}\n.subhealth-halfpage-mode .stagein{height:594px;}\n@media print{.subhealth-halfpage-mode .paper{width:216mm;height:156.75mm;}.subhealth-halfpage-mode .stage{padding:0;overflow:visible;}.subhealth-halfpage-mode .paper{box-shadow:none;}}\n'''
-          if marker not in s:
+          css_marker = '/* half-page subhealth layout v2 */'
+          css = '''
+/* half-page subhealth layout v2 */
+.subhealth-halfpage-mode .paper{width:864px!important;height:627px!important;}
+.subhealth-halfpage-mode .stagein{width:864px;height:627px;}
+.subhealth-halfpage-mode .node[data-id="doctype"]{display:none!important;}
+.subhealth-halfpage-mode .node[data-id="sign"]{top:535px!important;}
+.subhealth-halfpage-mode .node[data-id="reportDate"]{top:535px!important;}
+.subhealth-halfpage-mode .node[data-id="note"],.subhealth-halfpage-mode .node[data-id="page"]{display:none!important;}
+@media print{.subhealth-halfpage-mode .paper{width:216mm!important;height:156.75mm!important;box-shadow:none;}.subhealth-halfpage-mode .stage{padding:0;overflow:visible;}}
+'''
+          if css_marker not in s:
               idx = s.find('</style>')
               if idx < 0: raise SystemExit('Missing </style>')
               s = s[:idx] + css + s[idx:]
-          js_marker = '/* half-page subhealth behavior */'
-          js = r'''<script>\n/* half-page subhealth behavior */\n(()=>{\n  const paper=()=>document.getElementById('paper');\n  const stagein=()=>document.getElementById('stagein');\n  const list=()=>Array.from(document.querySelectorAll('.sh'));\n  const isSub=()=>list().some(b=>b.classList.contains('active'));\n  const clean=()=>{ if(!isSub()) return; document.querySelectorAll('#paper .node').forEach(n=>{ if(/_{3,}/.test(n.textContent||'')) n.textContent=(n.textContent||'').replace(/_{3,}/g,''); }); };\n  const apply=()=>{ const p=paper(), st=stagein(); if(!p||!st)return; document.body.classList.toggle('subhealth-halfpage-mode',isSub()); if(isSub()){ p.style.width='816px'; p.style.height='594px'; st.style.height='594px'; clean(); } else { p.style.width='864px'; p.style.height='1254px'; st.style.height='1254px'; } };\n  const bind=()=>list().forEach(b=>{ if(!b.dataset.halfpageBound){ b.dataset.halfpageBound='1'; b.addEventListener('click',()=>setTimeout(apply,30)); } });\n  const mo=new MutationObserver(()=>{bind();apply();});\n  mo.observe(document.body,{subtree:true,attributes:true,attributeFilter:['class'],childList:true});\n  bind(); apply();\n})();\n</script>'''
+          js_marker = '/* half-page subhealth behavior v2 */'
+          js = '''<script>
+/* half-page subhealth behavior v2 */
+(()=>{
+ const isSub=()=>document.body.dataset.template?.startsWith('subhealth:');
+ const p=()=>document.getElementById('paper');
+ const st=()=>document.getElementById('stagein');
+ const zoom=()=>{const m=(document.getElementById('z100')?.textContent||'100%').match(/([0-9.]+)/);return m?parseFloat(m[1])/100:1};
+ const clean=()=>{if(!isSub())return;document.querySelectorAll('#paper .node').forEach(n=>{n.textContent=(n.textContent||'').replace(/_{3,}/g,'');});};
+ const apply=()=>{const x=p(),y=st();if(!x||!y)return;const z=zoom();document.body.classList.toggle('subhealth-halfpage-mode',!!isSub());if(isSub()){x.style.width='864px';x.style.height='627px';y.style.width=(864*z)+'px';y.style.height=(627*z)+'px';clean();}else{x.style.width='864px';x.style.height='1254px';y.style.width=(864*z)+'px';y.style.height=(1254*z)+'px';}};
+ const bind=()=>document.querySelectorAll('.sh').forEach(b=>{if(b.dataset.hpBound)return;b.dataset.hpBound='1';b.addEventListener('click',()=>setTimeout(apply,40));});
+ const mo=new MutationObserver(()=>{bind();apply();}); mo.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','data-template']});
+ bind();setTimeout(apply,60);window.addEventListener('resize',apply);
+})();
+</script>'''
           if js_marker not in s:
-              idx = s.rfind('</body>')
-              if idx < 0: raise SystemExit('Missing </body>')
-              s = s[:idx] + js + s[idx:]
+              idx=s.rfind('</body>')
+              if idx<0: raise SystemExit('Missing </body>')
+              s=s[:idx]+js+s[idx:]
           p.write_text(s,encoding='utf-8')
           PY
-      - name: Validate patched app
+      - name: Validate patched HTML and scripts
         shell: bash
         run: |
           set -euo pipefail
-          node --check <(python - <<'PY'
+          python - <<'PY'
           from pathlib import Path
           import re
           s=Path('index.html').read_text(encoding='utf-8')
+          for marker in ['half-page subhealth layout v2','half-page subhealth behavior v2','subhealth-halfpage-mode','id="paper"','id="smartModal"']:
+              if marker.lower() not in s.lower(): raise SystemExit('Missing marker: '+marker)
           blocks=re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>',s,re.S|re.I)
-          print(blocks[-1] if blocks else '')
+          if len(blocks)<2: raise SystemExit(f'Expected at least 2 inline script blocks, got {len(blocks)}')
+          Path('/tmp/editor.js').write_text(blocks[0],encoding='utf-8')
+          Path('/tmp/halfpage.js').write_text(blocks[-1],encoding='utf-8')
           PY
-          )
-          grep -q 'half-page subhealth layout' index.html
-          grep -q 'subhealth-halfpage-mode' index.html
-          echo 'half-page patch validation passed'
+          node --check /tmp/editor.js
+          node --check /tmp/halfpage.js
+          echo 'Half-page HTML/JS validation passed'
       - name: Commit patch only once
         shell: bash
         run: |
