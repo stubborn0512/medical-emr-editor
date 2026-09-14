@@ -1,0 +1,1 @@
+The subhealth templates will use a dedicated half-page paper rather than A4 full height. Reference target: approximately 216mm × 156.75mm. The existing editor's A4 report templates remain unchanged.
