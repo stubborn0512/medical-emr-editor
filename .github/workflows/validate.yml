@@ -22,13 +22,12 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import re
           s = Path('index.html').read_text(encoding='utf-8')
           required = [
               '<!doctype html>',
               'id="paper"', 'id="ct"', 'id="us"',
               'id="print"', 'id="save"', 'id="load"',
-              'id="smart"', 'id="smartModal"', 'smart-identify.js'
+              'id="smart"', 'id="smartModal"'
           ]
           missing = [x for x in required if x.lower() not in s.lower()]
           if missing:
@@ -48,14 +47,14 @@ jobs:
           from pathlib import Path
           import re
           s = Path('index.html').read_text(encoding='utf-8')
-          # Extract only inline scripts; do not feed external src scripts into the inline validator.
           blocks = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', s, flags=re.S|re.I)
-          if not blocks:
-              raise SystemExit('No inline script block found')
-          # The editor intentionally contains HTML/newline text templates. Parse-balanced HTML/JS is
-          # exercised by the browser test below; this step only checks that script tags are balanced.
-          print(f'Found {len(blocks)} inline script block(s)')
+          if len(blocks) != 1:
+              raise SystemExit(f'Expected exactly 1 inline script block, got {len(blocks)}')
+          Path('/tmp/editor.js').write_text(blocks[0], encoding='utf-8')
+          print('Inline script extracted')
           PY
+          node --check /tmp/editor.js
+          echo 'Inline editor JavaScript syntax passed'
 
       - name: Validate smart-identify JavaScript
         shell: bash
