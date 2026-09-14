@@ -1,0 +1,1 @@
+Half-page means the editable paper itself is half-height. Existing A4 report templates remain full A4.
