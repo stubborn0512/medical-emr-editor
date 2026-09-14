@@ -1,19 +1,17 @@
 name: Browser smoke test
 on:
-  workflow_run:
-    workflows: ["pages build and deployment"]
-    types: [completed]
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   smoke:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -22,6 +20,29 @@ jobs:
           npm init -y >/dev/null 2>&1
           npm install --no-fund --no-audit playwright@1.55.0
           npx playwright install --with-deps chromium
+      - name: Wait for GitHub Pages deployment
+        env:
+          EXPECTED_FONT_CSS: https://cdnjs.cloudflare.com/ajax/libs/fontsource-ma-shan-zheng/5.3.1/chinese-simplified.css
+        run: |
+          python - <<'PY'
+          import time, urllib.request
+          target='https://stubborn0512.github.io/medical-emr-editor/signature.js'
+          expected='https://cdnjs.cloudflare.com/ajax/libs/fontsource-ma-shan-zheng/5.3.1/chinese-simplified.css'
+          last=''
+          for i in range(36):
+              try:
+                  req=urllib.request.Request(target,headers={'Cache-Control':'no-cache'})
+                  body=urllib.request.urlopen(req,timeout=15).read().decode('utf-8','ignore')
+                  if expected in body:
+                      print(f'Pages is serving the expected signature.js after {i+1} checks')
+                      break
+                  last='signature.js is reachable but still old'
+              except Exception as e:
+                  last=str(e)
+              time.sleep(5)
+          else:
+              raise SystemExit('GitHub Pages did not serve the new signature.js in time: '+last)
+          PY
       - name: Smoke test deployed site
         env:
           BASE_URL: https://stubborn0512.github.io/medical-emr-editor/
@@ -34,57 +55,42 @@ jobs:
           const errors=[];
           page.on('pageerror',e=>errors.push('pageerror: '+e.message));
           page.on('console',m=>{if(m.type()==='error') errors.push('console: '+m.text())});
-          let ready=false,last='';
-          for(let i=0;i<18;i++){
-            try{
-              await page.goto(process.env.BASE_URL,{waitUntil:'domcontentloaded',timeout:30000});
-              await page.waitForTimeout(1200);
-              if(await page.locator('#paper').count()===1 && await page.locator('#ct').count()===1){ready=true;break;}
-            }catch(e){last=e.message}
-            await page.waitForTimeout(4000);
-          }
-          if(!ready) throw new Error('Deployed site never became ready: '+last);
-          await page.waitForTimeout(1200);
+          await page.goto(process.env.BASE_URL,{waitUntil:'domcontentloaded',timeout:30000});
+          await page.waitForTimeout(1800);
           await page.evaluate(()=>sessionStorage.setItem('medical_emr_site_access_v1','1'));
           await page.reload({waitUntil:'domcontentloaded'});
-          await page.waitForTimeout(1000);
+          await page.waitForTimeout(1200);
           if(await page.locator('#sitePasswordGate').count()!==0) throw new Error('Stored unlock did not bypass gate');
-          const title=await page.title();
-          const paper=await page.locator('#paper').count();
-          const smart=await page.locator('#smart').count();
-          const sigButton=await page.locator('#handSignBtn').count();
-          console.log({title,paper,smart,sigButton,errors});
-          await page.screenshot({path:'artifacts/initial.png'});
-          if(errors.length) throw new Error(errors.join(' | '));
-          if(sigButton!==1) throw new Error('Handwriting signature button missing');
+          if(await page.locator('#paper').count()!==1) throw new Error('Paper missing');
+          if(await page.locator('#smart').count()!==1) throw new Error('Smart identify button missing');
+          if(await page.locator('#handSignBtn').count()!==1) throw new Error('Handwriting signature button missing');
           await page.locator('.sh[data-sh="skin"]').click();
           await page.waitForTimeout(700);
           const active=await page.locator('.sh[data-sh="skin"]').evaluate(el=>el.classList.contains('active'));
           const paperHeight=await page.locator('#paper').evaluate(el=>el.offsetHeight);
           const paperWidth=await page.locator('#paper').evaluate(el=>el.offsetWidth);
           const overflow=await page.evaluate(()=>{const p=document.getElementById('paper');return [...p.querySelectorAll('.node')].filter(n=>{const s=getComputedStyle(n);if(s.display==='none'||s.visibility==='hidden')return false;const l=n.offsetLeft,t=n.offsetTop,r=l+n.offsetWidth,b=t+n.offsetHeight;return l<0||t<0||r>p.offsetWidth||b>p.offsetHeight}).length});
-          console.log({skinActive:active,paperHeight,paperWidth,overflow});
-          await page.screenshot({path:'artifacts/skin-before-signature.png'});
           if(!active) throw new Error('Skin template did not activate');
-          if(paperWidth!==864 || paperHeight!==611) throw new Error(`Unexpected untransformed half-page size: ${paperWidth}x${paperHeight}`);
+          if(paperWidth!==864||paperHeight!==611) throw new Error(`Unexpected half-page size: ${paperWidth}x${paperHeight}`);
           if(overflow>0) throw new Error(`Half-page element overflow count: ${overflow}`);
           await page.locator('#handSignBtn').click();
-          await page.waitForTimeout(300);
+          await page.waitForTimeout(400);
           if(await page.locator('#sigModal').evaluate(el=>getComputedStyle(el).display)!=='flex') throw new Error('Signature modal did not open');
-          const font=await page.locator('#sigFont').inputValue();
-          if(!font) throw new Error('Signature font selector is empty');
+          const selectedFont=await page.locator('#sigFont').inputValue();
+          if(selectedFont!=='Ma Shan Zheng') throw new Error('Default handwriting font selector is not Ma Shan Zheng');
           await page.locator('#sigText').fill('示例医生');
           await page.locator('#sigApply').click();
-          await page.waitForTimeout(700);
+          await page.waitForTimeout(900);
           const sign=page.locator('#paper .node[data-id="sign"]');
           if(await sign.count()!==1) throw new Error('Signature node missing');
-          const signStyle=await sign.evaluate(el=>({fontFamily:el.style.fontFamily,computedFont:getComputedStyle(el).fontFamily,fontSize:el.style.fontSize,transform:el.style.transform,marker:el.dataset.handwritingSignature,text:el.textContent}));
+          const signStyle=await sign.evaluate(el=>({inline:el.style.fontFamily,computed:getComputedStyle(el).fontFamily,size:el.style.fontSize,marker:el.dataset.handwritingSignature,text:el.textContent}));
           const fontLoaded=await page.evaluate(()=>document.fonts.check('28px "Ma Shan Zheng"','示例医生'));
-          console.log({signStyle,fontLoaded});
-          await page.screenshot({path:'artifacts/skin-with-signature.png'});
+          await page.screenshot({path:'artifacts/handwriting-signature.png'});
+          console.log({title:await page.title(),skinActive:active,paperWidth,paperHeight,overflow,selectedFont,signStyle,fontLoaded,errors});
+          if(errors.length) throw new Error(errors.join(' | '));
           if(signStyle.marker!=='1') throw new Error('Handwriting signature marker missing');
-          if(!signStyle.fontFamily.includes('Ma Shan Zheng') && !signStyle.fontFamily.includes('Long Cang') && !signStyle.fontFamily.includes('Zhi Mang Xing')) throw new Error('Unexpected handwriting font family');
-          if(!fontLoaded) throw new Error('Chinese handwriting font Ma Shan Zheng did not load in Chromium');
+          if(!signStyle.inline.includes('Ma Shan Zheng')) throw new Error('Signature inline font family is not Ma Shan Zheng');
+          if(!fontLoaded) throw new Error('Ma Shan Zheng Chinese font did not load in Chromium');
           if(!signStyle.text.includes('签名')) throw new Error('Signature label missing');
           await browser.close();
           EOF
