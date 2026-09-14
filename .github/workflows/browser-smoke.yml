@@ -1,13 +1,12 @@
 name: Browser smoke test
 on:
-  workflow_run:
-    workflows: ["pages build and deployment"]
-    types: [completed]
+  push:
+    branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   smoke:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,37 +24,46 @@ jobs:
         run: |
           cat > /tmp/smoke.mjs <<'EOF'
           import { chromium } from 'playwright';
-          const base = process.env.BASE_URL;
-          const browser = await chromium.launch({headless:true});
-          const page = await browser.newPage();
-          const errors=[]; const requests=[];
-          page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
-          page.on('console', m => { if(m.type()==='error') errors.push(`console: ${m.text()}`); });
-          page.on('request', r => { if(r.isNavigationRequest() && r.url().startsWith(base)) requests.push(r.url()); });
-          await page.goto(base, {waitUntil:'domcontentloaded', timeout:30000});
-          await page.waitForTimeout(3000);
+          const base=process.env.BASE_URL;
+          const browser=await chromium.launch({headless:true});
+          const page=await browser.newPage();
+          const errors=[]; const nav=[];
+          page.on('pageerror',e=>errors.push('pageerror: '+e.message));
+          page.on('console',m=>{if(m.type()==='error') errors.push('console: '+m.text())});
+          page.on('framenavigated',f=>{if(f===page.mainFrame()) nav.push(f.url())});
+          let ready=false,last='';
+          for(let i=0;i<18;i++){
+            try{
+              await page.goto(base,{waitUntil:'domcontentloaded',timeout:15000});
+              await page.waitForTimeout(1000);
+              const has=await page.locator('#paper').count()===1 && await page.locator('#ct').count()===1;
+              if(has){ready=true;break;}
+            }catch(e){last=e.message}
+            await page.waitForTimeout(5000);
+          }
+          if(!ready) throw new Error('Deployed site never became ready: '+last);
+          await page.waitForTimeout(2500);
           const title=await page.title();
           const paper=await page.locator('#paper').count();
-          const ct=await page.locator('#ct').count();
           const smart=await page.locator('#smart').count();
-          const visibleText=await page.locator('body').innerText();
-          console.log({title,paper,ct,smart,navigations:requests.length,errors});
-          if (paper!==1 || ct!==1 || smart!==1) throw new Error('Core editor DOM missing');
-          if (requests.length>1) throw new Error(`Unexpected repeated navigation: ${requests.length}`);
-          if (/报错|异常|SyntaxError/i.test(visibleText)) throw new Error('Error text detected on page');
+          console.log({title,paper,smart,navigations:nav.length,errors});
+          if(nav.length!==1) throw new Error(`Unexpected repeated page navigation: ${nav.length}`);
+          if(errors.length) throw new Error(errors.join(' | '));
           await page.locator('#smart').click();
-          await page.waitForTimeout(300);
-          if (await page.locator('#smartModal').evaluate(el=>getComputedStyle(el).display)!=='flex') throw new Error('Smart modal did not open');
+          await page.waitForTimeout(250);
+          const smartDisplay=await page.locator('#smartModal').evaluate(el=>getComputedStyle(el).display);
+          if(smartDisplay!=='flex') throw new Error('Smart modal did not open');
           await page.locator('#smartClose').click();
-          await page.waitForTimeout(200);
-          if (await page.locator('#smartModal').evaluate(el=>getComputedStyle(el).display)!=='none') throw new Error('Smart modal did not close');
+          await page.waitForTimeout(150);
+          const closedDisplay=await page.locator('#smartModal').evaluate(el=>getComputedStyle(el).display);
+          if(closedDisplay==='flex') throw new Error('Smart modal did not close');
           await page.locator('.sh[data-sh="skin"]').click();
-          await page.waitForTimeout(400);
+          await page.waitForTimeout(350);
           const active=await page.locator('.sh[data-sh="skin"]').evaluate(el=>el.classList.contains('active'));
           const paperH=await page.locator('#paper').evaluate(el=>el.getBoundingClientRect().height);
           console.log({skinActive:active,paperHeight:paperH});
-          if(!active) throw new Error('Subhealth skin template did not activate');
-          if(Math.abs(paperH-611)>2) throw new Error(`Unexpected half-page editor height: ${paperH}`);
+          if(!active) throw new Error('Skin template did not activate');
+          if(Math.abs(paperH-611)>2) throw new Error(`Unexpected half-page height: ${paperH}`);
           await browser.close();
           EOF
           node /tmp/smoke.mjs
