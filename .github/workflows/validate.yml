@@ -1,5 +1,6 @@
 name: Validate editor
 
+# Regression trigger: validate the latest deployed modal layout fix.
 on:
   push:
     branches: [main]
@@ -36,6 +37,8 @@ jobs:
               raise SystemExit('Unexpected html tag count')
           if s.lower().count('<body') != 1 or s.lower().count('</body>') != 1:
               raise SystemExit('Unexpected body tag count')
+          if 'editor modal layout fix' not in s:
+              raise SystemExit('Modal layout regression CSS marker missing')
           print('HTML structure checks passed')
           PY
 
