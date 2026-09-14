@@ -25,6 +25,19 @@ jobs:
             git commit -m 'feat: wire site password gate'
             git push
           fi
+      - name: Ensure handwriting signature control is wired
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! grep -q '<script src="signature.js"></script>' index.html; then
+            python -c "from pathlib import Path; p=Path('index.html'); s=p.read_text(encoding='utf-8'); p.write_text(s.replace('</body>','<script src=\"signature.js\"></script></body>',1),encoding='utf-8')"
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add index.html
+            git commit -m 'feat: wire handwriting signature control'
+            git push
+          fi
       - name: Validate HTML structure
         shell: bash
         run: |
@@ -32,7 +45,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           s=Path('index.html').read_text(encoding='utf-8')
-          required=['<!doctype html>','id="paper"','id="ct"','id="us"','id="print"','id="save"','id="load"','id="smart"','id="smartModal"','half-page subhealth layout safe','half-page subhealth behavior safe','site-password.js']
+          required=['<!doctype html>','id="paper"','id="ct"','id="us"','id="print"','id="save"','id="load"','id="smart"','id="smartModal"','half-page subhealth layout safe','half-page subhealth behavior safe','site-password.js','signature.js']
           missing=[x for x in required if x.lower() not in s.lower()]
           if missing: raise SystemExit('Missing required markers: '+', '.join(missing))
           if s.lower().count('<html')!=1 or s.lower().count('</html>')!=1: raise SystemExit('Unexpected html tag count')
@@ -63,6 +76,15 @@ jobs:
           node --check site-password.js
           grep -q "medical_emr_site_access_v1" site-password.js
           echo 'site-password.js checks passed'
+      - name: Validate handwriting signature JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f signature.js
+          node --check signature.js
+          grep -q 'handSignBtn' signature.js
+          grep -q 'Ma Shan Zheng' signature.js
+          echo 'signature.js checks passed'
       - name: Validate smart-identify JavaScript
         shell: bash
         run: |
