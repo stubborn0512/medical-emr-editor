@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Sanitize broken inline JavaScript strings
+      - name: Normalize broken JavaScript strings
         shell: bash
         run: |
           set -euo pipefail
@@ -33,18 +33,88 @@ jobs:
 
           script = matches[0].group(1)
           out = []
-          state = None
+          state = None              # None, single, double, template, regex
           escaped = False
+          regex_class = False
+          last_sig = ''
+          word = []
           changed = 0
+
+          def flush_word():
+              return ''.join(word)
+
+          def regex_allowed(prev_sig, prev_word):
+              return prev_sig in '([{=,:;!&|?+-*%~<>' or prev_word in {
+                  'return','case','throw','else','do','typeof','void','delete','in','of','yield','await'
+              }
 
           i = 0
           while i < len(script):
               ch = script[i]
+
               if state is None:
-                  if ch in ('\'', '"', '`'):
-                      state = ch
-                      escaped = False
+                  # Track comments outside literals.
+                  if ch == '/' and i + 1 < len(script) and script[i + 1] == '/':
+                      j = i
+                      while j < len(script) and script[j] not in '\r\n':
+                          out.append(script[j]); j += 1
+                      i = j
+                      last_sig = ''
+                      word = []
+                      continue
+                  if ch == '/' and i + 1 < len(script) and script[i + 1] == '*':
+                      j = i
+                      while j + 1 < len(script):
+                          out.append(script[j]); out.append(script[j + 1])
+                          if script[j:j+2] == '*/':
+                              j += 2
+                              break
+                          j += 1
+                      i = j
+                      last_sig = ''
+                      word = []
+                      continue
+
+                  if ch == '`':
+                      state = 'template'; escaped = False; out.append(ch); i += 1; continue
+                  if ch == "'":
+                      state = 'single'; escaped = False; out.append(ch); i += 1; continue
+                  if ch == '"':
+                      state = 'double'; escaped = False; out.append(ch); i += 1; continue
+                  if ch == '/' and not (i + 1 < len(script) and script[i + 1] in '/*') and regex_allowed(last_sig, flush_word()):
+                      state = 'regex'; escaped = False; regex_class = False; out.append(ch); i += 1; continue
+
                   out.append(ch)
+                  if ch.isspace():
+                      i += 1
+                      continue
+                  if ch.isalnum() or ch in '_$':
+                      word.append(ch)
+                  else:
+                      if ch in '.)]}':
+                          pass
+                      else:
+                          word = []
+                      last_sig = ch
+                      if ch in ';,=([{:+-*%&|!?<>':
+                          word = []
+                  i += 1
+                  continue
+
+              if state == 'regex':
+                  out.append(ch)
+                  if escaped:
+                      escaped = False
+                  elif ch == '\\':
+                      escaped = True
+                  elif ch == '[':
+                      regex_class = True
+                  elif ch == ']' and regex_class:
+                      regex_class = False
+                  elif ch == '/' and not regex_class:
+                      state = None
+                      last_sig = '/'
+                      word = []
                   i += 1
                   continue
 
@@ -55,29 +125,19 @@ jobs:
                   continue
 
               if ch == '\\':
-                  # Preserve the escape, but normalize a backslash followed by a literal
-                  # newline so the JavaScript remains syntactically valid.
-                  if i + 1 < len(script) and script[i + 1] in ('\n', '\r') and state in ('\'', '"'):
-                      out.extend(['\\', 'n'])
-                      changed += 1
-                      i += 2
-                      if i < len(script) and script[i-1] == '\r' and script[i] == '\n':
-                          i += 1
-                      escaped = False
-                      continue
                   out.append(ch)
                   escaped = True
                   i += 1
                   continue
 
-              if ch == state:
+              if (state == 'single' and ch == "'") or (state == 'double' and ch == '"') or (state == 'template' and ch == '`'):
                   out.append(ch)
                   state = None
                   i += 1
                   continue
 
-              if state in ('\'', '"') and ch in ('\n', '\r'):
-                  out.extend(['\\', 'n'])
+              if state in ('single','double') and ch in '\r\n':
+                  out.extend(['\\','n'])
                   changed += 1
                   if ch == '\r' and i + 1 < len(script) and script[i + 1] == '\n':
                       i += 1
@@ -92,7 +152,7 @@ jobs:
           print(f'Normalized {changed} literal newline(s) inside quoted JavaScript strings')
           PY
 
-      - name: Validate repaired editor script
+      - name: Validate repaired app
         shell: bash
         run: |
           set -euo pipefail
@@ -104,12 +164,11 @@ jobs:
           if len(blocks) != 1:
               raise SystemExit(f'Expected exactly 1 inline script block, got {len(blocks)}')
           Path('/tmp/editor.js').write_text(blocks[0], encoding='utf-8')
-          print('Inline script extracted')
           PY
           node --check /tmp/editor.js
           test -f smart-identify.js
           node --check smart-identify.js
-          echo 'JavaScript syntax checks passed'
+          echo 'Repaired application JavaScript passed syntax checks'
 
       - name: Commit repaired app only
         shell: bash
@@ -122,5 +181,5 @@ jobs:
             echo 'No app changes needed'
             exit 0
           fi
-          git commit -m 'fix: restore editor initialization'
+          git commit -m 'fix: restore editor script syntax'
           git push
