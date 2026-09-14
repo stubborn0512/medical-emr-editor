@@ -1,0 +1,56 @@
+name: Integrate subhealth templates
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    if: ${{ !contains(github.event.head_commit.message, '[integrated-subhealth]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch editor
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          marker='<!-- SUBHEALTH_UI_V1 -->'
+          if marker in s:
+              raise SystemExit('subhealth UI already integrated')
+          css='''\n/* SUBHEALTH_UI_V1 */\n.subhealth-folder{border:1px solid #dbe2eb;border-radius:7px;margin:8px 0;overflow:hidden}.subhealth-head{display:flex;align-items:center;gap:6px;padding:8px 10px;background:#f6f8fb;font-weight:700;font-size:12px}.subhealth-toggle{border:0;background:transparent;padding:0 3px;font-size:12px}.subhealth-body{padding:7px 8px 4px;background:#fff}.subhealth-item{width:100%;border:0;background:transparent;text-align:left;padding:7px 8px;border-radius:5px;font-size:12px}.subhealth-item:hover,.subhealth-item.active{background:#eef4ff}.subhealth-item small{float:right;color:#8a929d}.subhealth-help{font-size:10px;line-height:1.5;color:#66717d;background:#f7f8fa;padding:8px;border-top:1px solid #e3e6ea}\n'''
+          s=s.replace('</style>',css+'</style>',1)
+          html='''<!-- SUBHEALTH_UI_V1 -->\n<div class="sec"><h3>模板库</h3><div class="subhealth-folder"><div class="subhealth-head"><button class="subhealth-toggle" id="subhealthToggle">▾</button><span>📁 常见亚健康 · 复诊模板库</span></div><div class="subhealth-body" id="subhealthBody"><button class="subhealth-item" data-subhealth="headache">📄 反复头痛随访记录<small>连续复诊</small></button><button class="subhealth-item" data-subhealth="neck">📄 颈肩痛 / 久坐不适复诊记录<small>连续复诊</small></button><button class="subhealth-item" data-subhealth="tendon">📄 腱鞘不适复诊记录<small>连续复诊</small></button><button class="subhealth-item" data-subhealth="lowback">📄 腰痛复诊记录<small>连续复诊</small></button><button class="subhealth-item" data-subhealth="skin">📄 皮肤问题复诊记录<small>阶段复诊</small></button><button class="subhealth-item" data-subhealth="gi">📄 胃部不适复诊记录<small>阶段复诊</small></button><button class="subhealth-item" data-subhealth="sleep">📄 睡眠问题随访记录<small>阶段随访</small></button><button class="subhealth-item" data-subhealth="mood">📄 情绪与心理状态随访记录<small>阶段随访</small></button></div><div class="subhealth-help">单击选择模板，双击或再次单击可直接载入到中央 A4 编辑区。仅用于健康管理、数据收集和界面演示。</div></div></div>'''
+          target='<div class="sec"><h3>文档结构</h3>'
+          if target not in s: raise SystemExit('document structure anchor not found')
+          s=s.replace(target,html+'\n'+target,1)
+          js='''\nconst SUBHEALTH={\nheadache:{name:'反复头痛随访记录',items:[['title','反复头痛随访记录',`left:210px;top:55px;width:450px;text-align:center;font-family:${fontStack};font-size:22px;font-weight:700`],['basic','姓名：匿名患者　编号：DEMO-SH-001',`left:70px;top:120px;width:700px;font-family:${fontStack};font-size:14px`],['date','首次就诊日期：________　　本次随访：第__次',`left:70px;top:154px;width:700px;font-family:${fontStack};font-size:14px`],['sym','主要症状：____________________________________________',`left:70px;top:215px;width:720px;font-family:${fontStack};font-size:14px`],['exam','相关检查：按真实医疗记录填写',`left:70px;top:285px;width:720px;font-family:${fontStack};font-size:14px`],['assess','医生评估/诊断：由接诊医生填写',`left:70px;top:320px;width:720px;font-family:${fontStack};font-size:14px`],['follow','连续复诊记录：\\n日期：________　症状变化：________________________\\n日期：________　症状变化：________________________\\n日期：________　症状变化：________________________',`left:70px;top:385px;width:720px;font-family:${fontStack};font-size:14px;line-height:2`]]},\nneck:{name:'颈肩痛 / 久坐不适复诊记录',items:[['title','颈肩痛 / 久坐不适复诊记录',`left:180px;top:55px;width:500px;text-align:center;font-family:${fontStack};font-size:22px;font-weight:700`],['basic','姓名：匿名患者　编号：DEMO-SH-002',`left:70px;top:120px;width:700px;font-family:${fontStack};font-size:14px`],['complaint','主诉：颈部/肩部不适（按真实情况填写）',`left:70px;top:205px;width:720px;font-family:${fontStack};font-size:14px`],['exam','检查：按真实医疗记录填写',`left:70px;top:285px;width:720px;font-family:${fontStack};font-size:14px`],['assess','医生评估/诊断：由接诊医生填写',`left:70px;top:320px;width:720px;font-family:${fontStack};font-size:14px`],['follow','复诊时间轴：\\n首次：________ → 第1次：________ → 第2次：________ → 第3次：________',`left:70px;top:385px;width:720px;font-family:${fontStack};font-size:14px;line-height:2`]]},\ntendon:{name:'腱鞘不适复诊记录',items:[['title','腱鞘不适复诊记录',`left:210px;top:55px;width:450px;text-align:center;font-family:${fontStack};font-size:22px;font-weight:700`],['basic','姓名：匿名患者　编号：DEMO-SH-003',`left:70px;top:120px;width:700px;font-family:${fontStack};font-size:14px`],['sym','主要症状：疼痛部位、活动受限、持续时间',`left:70px;top:205px;width:720px;font-family:${fontStack};font-size:14px`],['exam','检查：按真实医疗记录填写',`left:70px;top:285px;width:720px;font-family:${fontStack};font-size:14px`],['plan','处理方式：按真实医嘱填写',`left:70px;top:320px;width:720px;font-family:${fontStack};font-size:14px`],['follow','复诊记录：\\n日期：________　症状变化：________________________\\n日期：________　症状变化：________________________\\n日期：________　症状变化：________________________',`left:70px;top:385px;width:720px;font-family:${fontStack};font-size:14px;line-height:2`]]},\nlowback:{name:'腰痛复诊记录',items:[['title','腰痛复诊记录',`left:230px;top:55px;width:400px;text-align:center;font-family:${fontStack};font-size:22px;font-weight:700`],['basic','姓名：匿名患者　编号：DEMO-SH-004',`left:70px;top:120px;width:700px;font-family:${fontStack};font-size:14px`],['sym','主诉：腰痛开始时间、诱因、活动受限等',`left:70px;top:205px;width:720px;font-family:${fontStack};font-size:14px`],['exam','相关检查：按真实医疗记录填写',`left:70px;top:285px;width:720px;font-family:${fontStack};font-size:14px`],['assess','医生评估/诊断：由接诊医生填写',`left:70px;top:320px;width:720px;font-family:${fontStack};font-size:14px`],['follow','连续复诊：\\n第1次：________　症状：________________\\n第2次：________　症状：________________\\n第3次：________　症状：________________',`left:70px;top:385px;width:720px;font-family:${fontStack};font-size:14px;line-height:2`]]},\nskin:{name:'皮肤问题复诊记录',items:[['title','皮肤问题复诊记录',`left:220px;top:55px;width:420px;text-align:center;font-family:${fontStack};font-size:22px;font-weight:700`],['basic','姓名：匿名患者　编号：DEMO-SH-005',`left:70px;top:120px;width:700px;font-family:${fontStack};font-size:14px`],['sym','主要症状：皮疹/瘙痒/红肿等，持续时间：________',`left:70px;top:205px;width:720px;font-family:${fontStack};font-size:14px`],['assess','医生评估/诊断：由接诊医生填写',`left:70px;top:270px;width:720px;font-family:${fontStack};font-size:14px`],['plan','处理方式：按真实医嘱填写',`left:70px;top:305px;width:720px;font-family:${fontStack};font-size:14px`],['follow','复诊：日期________　症状变化________　治疗反应________\\n复诊：日期________　症状变化________　治疗反应________',`left:70px;top:385px;width:720px;font-family:${fontStack};font-size:14px;line-height:2`]]},\ngi:{name:'胃部不适复诊记录',items:[['title','胃部不适复诊记录',`left:215px;top:55px;width:430px;text-align:center;font-family:${fontStack};font-size:22px;font-weight:700`],['basic','姓名：匿名患者　编号：DEMO-SH-006',`left:70px;top:120px;width:700px;font-family:${fontStack};font-size:14px`],['sym','主要症状：胃痛、反酸、烧心等（按真实情况填写）',`left:70px;top:205px;width:720px;font-family:${fontStack};font-size:14px`],['exam','相关检查：按真实医疗记录填写',`left:70px;top:270px;width:720px;font-family:${fontStack};font-size:14px`],['plan','处理方式：按真实医嘱填写',`left:70px;top:305px;width:720px;font-family:${fontStack};font-size:14px`],['follow','复诊时间线：首次________ → 第1次________ → 第2次________ → 第3次________',`left:70px;top:385px;width:720px;font-family:${fontStack};font-size:14px`]]},\nsleep:{name:'睡眠问题随访记录',items:[['title','睡眠问题随访记录',`left:220px;top:55px;width:420px;text-align:center;font-family:${fontStack};font-size:22px;font-weight:700`],['basic','姓名：匿名患者　编号：DEMO-SH-007',`left:70px;top:120px;width:700px;font-family:${fontStack};font-size:14px`],['sym','主要表现：入睡困难/夜醒/早醒等（按真实情况填写）',`left:70px;top:205px;width:720px;font-family:${fontStack};font-size:14px`],['routine','近期作息：就寝____　起床____　平均睡眠时长____小时',`left:70px;top:270px;width:720px;font-family:${fontStack};font-size:14px`],['follow','随访记录：\\n日期________　睡眠变化________________________\\n日期________　睡眠变化________________________\\n日期________　睡眠变化________________________',`left:70px;top:350px;width:720px;font-family:${fontStack};font-size:14px;line-height:2`]]},\nmood:{name:'情绪与心理状态随访记录',items:[['title','情绪与心理状态随访记录',`left:185px;top:55px;width:495px;text-align:center;font-family:${fontStack};font-size:22px;font-weight:700`],['basic','姓名：匿名患者　编号：DEMO-SH-008',`left:70px;top:120px;width:700px;font-family:${fontStack};font-size:14px`],['state','近期状态：情绪、压力、睡眠等（按真实情况填写）',`left:70px;top:205px;width:720px;font-family:${fontStack};font-size:14px;line-height:1.7`],['assess','专业评估/诊断：仅由专业人员填写',`left:70px;top:300px;width:720px;font-family:${fontStack};font-size:14px`],['follow','随访记录：\\n日期________　状态变化________________________\\n日期________　状态变化________________________\\n日期________　状态变化________________________',`left:70px;top:365px;width:720px;font-family:${fontStack};font-size:14px;line-height:2`],['notice','本模板用于数据整理与界面演示，不替代专业诊疗。',`left:70px;top:565px;width:720px;font-family:${fontStack};font-size:12px;color:#666`]]}};
+function loadSubhealth(key){const t=SUBHEALTH[key];if(!t)return;push();clearDoc();t.items.forEach(a=>node({id:a[0],text:a[1],style:a[2],locked:false}));rule('sub-rule',55,165,754);document.body.dataset.template='subhealth:'+key;document.querySelectorAll('[data-subhealth]').forEach(b=>b.classList.toggle('active',b.dataset.subhealth===key));refresh();markDirty();fit();check();toast('已载入：'+t.name)}
+document.querySelectorAll('[data-subhealth]').forEach(b=>{b.addEventListener('click',()=>loadSubhealth(b.dataset.subhealth));});document.getElementById('subhealthToggle').onclick=()=>{const x=document.getElementById('subhealthBody');x.hidden=!x.hidden;document.getElementById('subhealthToggle').textContent=x.hidden?'▸':'▾'};
+window.loadSubhealth=loadSubhealth;\n'''
+          idx=s.rfind('</script>')
+          if idx<0: raise SystemExit('script closing tag not found')
+          s=s[:idx]+js+s[idx:]
+          p.write_text(s,encoding='utf-8')
+      - name: Validate
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('index.html').read_text(encoding='utf-8')
+          blocks=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',s,re.S|re.I)
+          if not blocks: raise SystemExit('no script')
+          Path('/tmp/editor.js').write_text('\n'.join(blocks),encoding='utf-8')
+          PY
+          node --check /tmp/editor.js
+      - name: Commit integration
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "feat: integrate subhealth template folder [integrated-subhealth]"
+          git push
