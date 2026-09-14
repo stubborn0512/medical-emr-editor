@@ -1,0 +1,1 @@
+Half-page paper: 216mm x 156.75mm. No pseudo-underlines. Keep demo watermark.
