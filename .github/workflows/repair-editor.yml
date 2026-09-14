@@ -47,8 +47,10 @@ jobs:
           from pathlib import Path
           import re
           s=Path('index.html').read_text(encoding='utf-8')
-          js=re.search(r'<script>([\\s\\S]*?)</script>',s).group(1)
-          Path('/tmp/editor.js').write_text(js,encoding='utf-8')
+          m=re.search(r'<script>(.*?)</script>',s,re.S)
+          if not m:
+              raise SystemExit('No script block found')
+          Path('/tmp/editor.js').write_text(m.group(1),encoding='utf-8')
           PY
           node --check /tmp/editor.js
 
