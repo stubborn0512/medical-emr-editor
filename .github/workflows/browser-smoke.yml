@@ -1,19 +1,15 @@
 name: Browser smoke test
 on:
-  workflow_run:
-    workflows: ["pages build and deployment"]
-    types: [completed]
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   smoke:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -35,8 +31,17 @@ jobs:
           const errors=[];
           page.on('pageerror',e=>errors.push('pageerror: '+e.message));
           page.on('console',m=>{if(m.type()==='error') errors.push('console: '+m.text())});
-          await page.goto(base,{waitUntil:'domcontentloaded',timeout:30000});
-          await page.waitForTimeout(3500);
+          let ready=false,last='';
+          for(let i=0;i<18;i++){
+            try{
+              await page.goto(base,{waitUntil:'domcontentloaded',timeout:30000});
+              await page.waitForTimeout(1200);
+              if(await page.locator('#paper').count()===1 && await page.locator('#ct').count()===1){ready=true;break;}
+            }catch(e){last=e.message}
+            await page.waitForTimeout(4000);
+          }
+          if(!ready) throw new Error('Deployed site never became ready: '+last);
+          await page.waitForTimeout(1500);
           if(await page.locator('#sitePasswordGate').count()!==1) throw new Error('Site password gate missing');
           await page.locator('#sitePasswordInput').fill('incorrect');
           await page.locator('#sitePasswordSubmit').click();
@@ -78,6 +83,7 @@ jobs:
           if(!text) throw new Error('Signature text input is empty');
           const font=await page.locator('#sigFont').inputValue();
           if(!font) throw new Error('Signature font selector is empty');
+          await page.locator('#sigText').fill('示例医生');
           await page.locator('#sigApply').click();
           await page.waitForTimeout(300);
           const sign=page.locator('#paper .node[data-id="sign"]');
