@@ -1,0 +1,1 @@
+Target paper height is half of A4, not A4. Existing A4 CT/ultrasound templates remain unchanged.
