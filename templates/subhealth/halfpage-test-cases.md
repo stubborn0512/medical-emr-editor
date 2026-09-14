@@ -1,0 +1,1 @@
+Regression cases: load each of 8 subhealth templates; paper must be half-page height; no pseudo-underlines; no full A4 blank tail; template remains editable; existing CT/ultrasound templates keep A4 height.
