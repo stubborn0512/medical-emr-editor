@@ -19,9 +19,9 @@ jobs:
           from pathlib import Path
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
-          css_marker = '/* half-page subhealth layout v2 */'
+          css_marker = '/* half-page subhealth layout v3 */'
           css = '''
-/* half-page subhealth layout v2 */
+/* half-page subhealth layout v3 */
 .subhealth-halfpage-mode .paper{width:864px!important;height:627px!important;}
 .subhealth-halfpage-mode .stagein{width:864px;height:627px;}
 .subhealth-halfpage-mode .node[data-id="doctype"]{display:none!important;}
@@ -34,9 +34,9 @@ jobs:
               idx = s.find('</style>')
               if idx < 0: raise SystemExit('Missing </style>')
               s = s[:idx] + css + s[idx:]
-          js_marker = '/* half-page subhealth behavior v2 */'
+          js_marker = '/* half-page subhealth behavior v3 */'
           js = '''<script>
-/* half-page subhealth behavior v2 */
+/* half-page subhealth behavior v3 */
 (()=>{
  const isSub=()=>document.body.dataset.template?.startsWith('subhealth:');
  const p=()=>document.getElementById('paper');
@@ -63,7 +63,7 @@ jobs:
           from pathlib import Path
           import re
           s=Path('index.html').read_text(encoding='utf-8')
-          for marker in ['half-page subhealth layout v2','half-page subhealth behavior v2','subhealth-halfpage-mode','id="paper"','id="smartModal"']:
+          for marker in ['half-page subhealth layout v3','half-page subhealth behavior v3','subhealth-halfpage-mode','id="paper"','id="smartModal"']:
               if marker.lower() not in s.lower(): raise SystemExit('Missing marker: '+marker)
           blocks=re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>',s,re.S|re.I)
           if len(blocks)<2: raise SystemExit(f'Expected at least 2 inline script blocks, got {len(blocks)}')
