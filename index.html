@@ -16,6 +16,15 @@ button,input,select{font:inherit}button{cursor:pointer}.app{height:100%;display:
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);display:none;background:#20252b;color:#fff;padding:9px 13px;border-radius:7px;z-index:10001;box-shadow:0 8px 30px rgba(0,0,0,.2)}
 .toast.show{display:block}
 @media print{.modal,.toast{display:none!important}}
+
+/* half-page subhealth layout final */
+.subhealth-halfpage-mode .paper{width:864px!important;height:627px!important;}
+.subhealth-halfpage-mode .stagein{width:864px;height:627px;}
+.subhealth-halfpage-mode .node[data-id="doctype"]{display:none!important;}
+.subhealth-halfpage-mode .node[data-id="sign"]{top:535px!important;}
+.subhealth-halfpage-mode .node[data-id="reportDate"]{top:535px!important;}
+.subhealth-halfpage-mode .node[data-id="note"],.subhealth-halfpage-mode .node[data-id="page"]{display:none!important;}
+@media print{.subhealth-halfpage-mode .paper{width:216mm!important;height:156.75mm!important;box-shadow:none}.subhealth-halfpage-mode .stage{padding:0;overflow:visible}}
 </style></head><body>
 <div class="app"><header class="top"><div class="brand">医疗文书模板编辑器 Demo</div><span class="badge">仅用于界面/排版演示 · 非真实医疗文书</span><span id="saveState" class="status">● 已保存</span><div class="sep"></div><button class="tb" id="undo">↶</button><button class="tb" id="redo">↷</button><div class="sep"></div><button class="tb" id="readonly">只读</button><button class="tb" id="add">文字</button><button class="tb" id="time">时间</button><button class="tb" id="single">单选</button><button class="tb" id="dropdown">下拉</button><button class="tb" id="table">表格</button><button class="tb" id="check">智能检查</button><button class="tb" id="smart">智能识别</button><button class="tb" id="fit">适应页面</button><button class="tb" id="snap">吸附</button><button class="tb" id="zm">−</button><button class="tb" id="z100">100%</button><button class="tb" id="zp">＋</button><span class="sp"></span><button class="tb" id="save">保存</button><button class="tb" id="load">载入</button><button class="tb" id="export">导出</button><button class="tb" id="print">打印</button></header>
 <div class="grid"><aside class="panel left"><div class="sec"><h3>报告模板</h3><div class="sub">匿名/虚构演示模板</div><button class="item active" id="ct">螺旋CT检查报告单</button><button class="item" id="us">超声检查报告单</button></div><div class="sec"><h3>模板库</h3><div class="folder"><div class="folderHead"><button id="folderToggle">▾</button><span>📁 常见亚健康 · 复诊模板库</span></div><div class="folderBody" id="subhealthList"><button class="sh" data-sh="headache">📄 反复头痛随访记录<small>连续复诊</small></button><button class="sh" data-sh="neck">📄 颈肩痛 / 久坐不适复诊记录<small>连续复诊</small></button><button class="sh" data-sh="tendon">📄 腱鞘不适复诊记录<small>连续复诊</small></button><button class="sh" data-sh="lowback">📄 腰痛复诊记录<small>连续复诊</small></button><button class="sh" data-sh="skin">📄 皮肤问题复诊记录<small>阶段复诊</small></button><button class="sh" data-sh="gi">📄 胃部不适复诊记录<small>阶段复诊</small></button><button class="sh" data-sh="sleep">📄 睡眠问题随访记录<small>阶段随访</small></button><button class="sh" data-sh="mood">📄 情绪与心理状态随访记录<small>阶段随访</small></button></div><div class="help">单击即可载入模板到中央 A4 编辑区。模板仅用于健康管理、数据收集和界面演示，不替代诊疗。</div></div></div><div class="sec"><h3>文档结构</h3><input class="search" id="q" placeholder="搜索元素"><div id="tree" class="tree"></div></div><div class="sec"><h3>数据元</h3><button class="item" data-k="text">文本数据元</button><button class="item" data-k="time">日期/时间</button><button class="item" data-k="single">单选数据元</button><button class="item" data-k="select">下拉数据元</button><button class="item" data-k="table">表格/复诊记录</button></div><div class="sec"><div class="note">Ctrl+Z/Y、Ctrl+S、Ctrl+C/V、Delete、方向键、Shift+方向键、Esc；双击页面空白处新增文字；拖动文字移动；拖动右下角控制点调整大小。</div></div></aside>
@@ -132,4 +141,20 @@ byId('smart').onclick=openSmart;byId('smartClose').onclick=closeSmart;byId('smar
 })();
 })();
 </script>
-</body></html>
+<script>
+/* half-page subhealth behavior final */
+(()=>{
+ const sub=()=>document.body.dataset.template?.startsWith('subhealth:');
+ const p=()=>document.getElementById('paper');
+ const st=()=>document.getElementById('stagein');
+ const z=()=>{const m=(document.getElementById('z100')?.textContent||'100%').match(/[0-9.]+/);return m?parseFloat(m[0])/100:1};
+ const clean=()=>{if(!sub())return;document.querySelectorAll('#paper .node').forEach(n=>{n.textContent=(n.textContent||'').replace(/_{3,}/g,'').trimEnd();});document.querySelectorAll('#paper .rule[data-id="subline"]').forEach(e=>e.remove());};
+ const apply=()=>{const x=p(),y=st();if(!x||!y)return;const is=sub();document.body.classList.toggle('subhealth-halfpage-mode',!!is);if(is){x.style.width='864px';x.style.height='627px';y.style.width=(864*z())+'px';y.style.height=(627*z())+'px';clean();}else{x.style.width='864px';x.style.height='1254px';y.style.width=(864*z())+'px';y.style.height=(1254*z())+'px';}};
+ const bind=()=>['fit','zm','zp','z100'].forEach(id=>{const b=document.getElementById(id);if(b&&!b.dataset.hpfBound){b.dataset.hpfBound='1';b.addEventListener('click',()=>setTimeout(apply,50));}});
+ const addPrint=()=>{if(!sub()||document.getElementById('halfpage-print-page'))return;const s=document.createElement('style');s.id='halfpage-print-page';s.textContent='@media print{@page{size:216mm 156.75mm;margin:0}}';document.head.appendChild(s)};
+ const remPrint=()=>document.getElementById('halfpage-print-page')?.remove();
+ const mo=new MutationObserver(()=>{bind();apply();});mo.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','data-template']});
+ window.addEventListener('beforeprint',addPrint);window.addEventListener('afterprint',remPrint);window.addEventListener('resize',apply);
+ bind();setTimeout(apply,100);setTimeout(apply,500);setTimeout(apply,1200);
+})();
+</script></body></html>
