@@ -1,0 +1,6 @@
+/* Half-page reference layout for demo-only subhealth templates. */
+:root{--half-w:864px;--half-h:627px;}
+.subhealth-halfpage{width:var(--half-w);height:var(--half-h);background:#fff;overflow:hidden;position:relative;box-sizing:border-box;}
+.subhealth-halfpage .demo-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:90;transform:rotate(-28deg);font:700 46px/1 "Microsoft YaHei",Arial,sans-serif;color:rgba(185,30,30,.10);white-space:nowrap;}
+/* Keep the reference's dense top block; do not add form underline placeholders. */
+.subhealth-halfpage .section-rule{height:1px;background:#111;position:absolute;left:68px;right:68px;}
