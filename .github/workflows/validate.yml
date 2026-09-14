@@ -1,0 +1,49 @@
+name: Validate editor
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate HTML and JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s = Path('index.html').read_text(encoding='utf-8')
+          if '<!doctype html>' not in s.lower():
+              raise SystemExit('index.html is missing a doctype')
+          scripts = re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', s, flags=re.S | re.I)
+          if not scripts:
+              raise SystemExit('No inline script block found')
+          Path('/tmp/editor.js').write_text('\n'.join(scripts), encoding='utf-8')
+          print(f'Found {len(scripts)} script block(s)')
+          PY
+          node --check /tmp/editor.js
+
+      - name: Check required UI hooks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          s = Path('index.html').read_text(encoding='utf-8')
+          required = ['id="paper"','id="ct"','id="us"','id="print"','id="save"','id="load"']
+          missing = [x for x in required if x not in s]
+          if missing:
+              raise SystemExit('Missing required hooks: ' + ', '.join(missing))
+          print('Required UI hooks present')
+          PY
