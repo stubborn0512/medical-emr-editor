@@ -12,18 +12,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Ensure site password gate
+      - name: Ensure site password gate is wired
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
           if ! grep -q '<script src="site-password.js"></script>' index.html; then
-            python - <<'PY'
-            from pathlib import Path
-            p=Path('index.html')
-            s=p.read_text(encoding='utf-8')
-            s=s.replace('</body>','<script src="site-password.js"></script></body>',1)
-            p.write_text(s,encoding='utf-8')
-            PY
+            python -c "from pathlib import Path; p=Path('index.html'); s=p.read_text(encoding='utf-8'); p.write_text(s.replace('</body>','<script src=\"site-password.js\"></script></body>',1),encoding='utf-8')"
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add index.html
