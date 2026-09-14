@@ -33,7 +33,7 @@ jobs:
           if ! grep -q '<script src="signature.js"></script>' index.html; then
             python -c "from pathlib import Path; p=Path('index.html'); s=p.read_text(encoding='utf-8'); p.write_text(s.replace('</body>','<script src=\"signature.js\"></script></body>',1),encoding='utf-8')"
             git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git config user.email '41898282+stubborn0512@users.noreply.github.com'
             git add index.html
             git commit -m 'feat: wire handwriting signature control'
             git push
@@ -45,12 +45,11 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           s=Path('index.html').read_text(encoding='utf-8')
-          required=['<!doctype html>','id="paper"','id="ct"','id="us"','id="print"','id="save"','id="load"','id="smart"','id="smartModal"','half-page subhealth layout safe','half-page subhealth behavior safe','site-password.js','signature.js']
+          required=['<!doctype html>','id="paper"','id="ct"','id="us"','id="print"','id="save"','id="load"','id="smart"','id="smartModal"','subhealth-halfpage-mode','height:611px','height:148.5mm','site-password.js','signature.js']
           missing=[x for x in required if x.lower() not in s.lower()]
           if missing: raise SystemExit('Missing required markers: '+', '.join(missing))
           if s.lower().count('<html')!=1 or s.lower().count('</html>')!=1: raise SystemExit('Unexpected html tag count')
           if s.lower().count('<body')!=1 or s.lower().count('</body>')!=1: raise SystemExit('Unexpected body tag count')
-          if 'height:611px' not in s or 'height:148.5mm' not in s: raise SystemExit('Half-page dimensions missing')
           print('HTML structure checks passed')
           PY
       - name: Validate all inline editor scripts
