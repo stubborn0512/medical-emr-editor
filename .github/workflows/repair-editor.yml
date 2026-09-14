@@ -1,0 +1,62 @@
+name: Repair editor
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, '[repair-editor]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add safe startup fallback and diagnostics
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          marker='<!-- runtime-fallback-v1 -->'
+          if marker not in s:
+              s=s.replace(
+                  '<div class="wm">DEMO · 非真实医疗文书</div>',
+                  '<div class="wm">DEMO · 非真实医疗文书</div><div id="runtimeFallback" style="display:none;position:absolute;inset:0;background:#fff;z-index:1000;padding:36px;font-family:SimSun,宋体,serif"><h1 style="text-align:center;font-size:24px">医疗文书模板编辑器 Demo</h1><hr><p>编辑器正在恢复安全预览，请稍候。</p><p style="color:#9b3c23" id="runtimeFallbackMsg">页面脚本未完成初始化。</p><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:rotate(-31deg);font-size:56px;font-weight:800;letter-spacing:7px;color:rgba(185,30,30,.10);pointer-events:none">DEMO · 非真实医疗文书</div></div>',
+                  1,
+              )
+              s=s.replace(
+                  '<script>\n',
+                  '<script>\nwindow.__EMR_BOOT_TIME__=Date.now();window.__EMR_READY__=false;window.addEventListener("error",function(e){var f=document.getElementById("runtimeFallback");var m=document.getElementById("runtimeFallbackMsg");if(f){f.style.display="block";if(m)m.textContent="脚本初始化失败："+(e.message||"未知错误")+"。"}});window.addEventListener("unhandledrejection",function(){var f=document.getElementById("runtimeFallback");if(f)f.style.display="block"});setTimeout(function(){if(!window.__EMR_READY__){var f=document.getElementById("runtimeFallback");if(f)f.style.display="block"}},2000);\n',
+                  1,
+              )
+              s=s.replace(
+                  '})();</script>',
+                  'window.__EMR_READY__=true;})();</script>',
+                  1,
+              )
+              s += '\n' + marker + '\n'
+              p.write_text(s,encoding='utf-8')
+
+      - name: Validate HTML/JS
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('index.html').read_text(encoding='utf-8')
+          js=re.search(r'<script>([\\s\\S]*?)</script>',s).group(1)
+          Path('/tmp/editor.js').write_text(js,encoding='utf-8')
+          PY
+          node --check /tmp/editor.js
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet || git commit -m "fix: add runtime fallback and diagnostics [repair-editor]"
+          git push
