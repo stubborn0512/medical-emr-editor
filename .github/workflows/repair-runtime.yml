@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Repair inline parser
+      - name: Sanitize broken inline JavaScript strings
         shell: bash
         run: |
           set -euo pipefail
@@ -26,16 +26,73 @@ jobs:
 
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
-          new_parse = r'''function parse(text){const out=[],seen=new Set(),add=(f,v)=>{v=String(v).trim();if(v&&!seen.has(f)&&v.length<=1500){seen.add(f);out.push({field:f,value:v})}};const lines=text.split(/\r?\n|[；;]/).map(x=>x.trim()).filter(Boolean),all=lines.join('\n');for(const line of lines){const m=line.match(/^([^：:]{1,14})\s*[：:]\s*(.+)$/);if(m){const c=canon(m[1]);if(c){add(c,m[2]);continue}}const ga=line.match(/^(男|女|男性|女性)\s*[，,、]\s*(\d{1,3})\s*岁?$/);if(ga){add('性别',ga[1]);add('年龄',ga[2]+'岁');continue}const d=line.match(/(20\d{2}[年\/-]\d{1,2}[月\/-]\d{1,2}日?)/);if(d&&/日期|时间|就诊|检查|报告|复诊|随访/.test(line))add(/报告/.test(line)?'报告日期':/检查/.test(line)?'检查日期':/复诊|随访/.test(line)?'复诊日期':'就诊日期',d[1]);const ph=line.match(/(?<!\d)(1[3-9]\d{9})(?!\d)/);if(ph&&/电话|手机|联系/.test(line))add('联系电话',ph[1])}if(!seen.has('性别')){const g=all.match(/(?:^|[\s，,])([男女])(?:性)?(?:[\s，,。]|$)/);if(g)add('性别',g[1])}if(!seen.has('年龄')){const a=all.match(/(\d{1,3})\s*岁/);if(a)add('年龄',a[1]+'岁')}return out}'''
+          pat = re.compile(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', re.S | re.I)
+          matches = list(pat.finditer(s))
+          if len(matches) != 1:
+              raise SystemExit(f'Expected exactly one inline script block, found {len(matches)}')
 
-          s2, n = re.subn(r'function parse\(text\)\{.*?return out\}', lambda m: new_parse, s, count=1, flags=re.S)
-          if n != 1:
-              raise SystemExit(f'Expected one parse function replacement, got {n}')
-          p.write_text(s2, encoding='utf-8')
-          print('Repaired parser function')
+          script = matches[0].group(1)
+          out = []
+          state = None
+          escaped = False
+          changed = 0
+
+          i = 0
+          while i < len(script):
+              ch = script[i]
+              if state is None:
+                  if ch in ('\'', '"', '`'):
+                      state = ch
+                      escaped = False
+                  out.append(ch)
+                  i += 1
+                  continue
+
+              if escaped:
+                  out.append(ch)
+                  escaped = False
+                  i += 1
+                  continue
+
+              if ch == '\\':
+                  # Preserve the escape, but normalize a backslash followed by a literal
+                  # newline so the JavaScript remains syntactically valid.
+                  if i + 1 < len(script) and script[i + 1] in ('\n', '\r') and state in ('\'', '"'):
+                      out.extend(['\\', 'n'])
+                      changed += 1
+                      i += 2
+                      if i < len(script) and script[i-1] == '\r' and script[i] == '\n':
+                          i += 1
+                      escaped = False
+                      continue
+                  out.append(ch)
+                  escaped = True
+                  i += 1
+                  continue
+
+              if ch == state:
+                  out.append(ch)
+                  state = None
+                  i += 1
+                  continue
+
+              if state in ('\'', '"') and ch in ('\n', '\r'):
+                  out.extend(['\\', 'n'])
+                  changed += 1
+                  if ch == '\r' and i + 1 < len(script) and script[i + 1] == '\n':
+                      i += 1
+                  i += 1
+                  continue
+
+              out.append(ch)
+              i += 1
+
+          fixed = ''.join(out)
+          p.write_text(s[:matches[0].start(1)] + fixed + s[matches[0].end(1):], encoding='utf-8')
+          print(f'Normalized {changed} literal newline(s) inside quoted JavaScript strings')
           PY
 
-      - name: Validate inline editor script
+      - name: Validate repaired editor script
         shell: bash
         run: |
           set -euo pipefail
