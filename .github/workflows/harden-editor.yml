@@ -24,37 +24,40 @@ jobs:
           if marker in s:
               raise SystemExit(0)
 
-          # Add persistent save-state indicator.
-          s = s.replace(
-              '<div class="sep"></div>\n  <button class="tb" id="undoBtn"',
-              '<div class="sep"></div><span id="saveState" style="font-size:11px;color:#b9c2cd;white-space:nowrap">● 已保存</span>\n  <button class="tb" id="undoBtn"',
-              1,
-          )
+          # Add a persistent save-state indicator when the current topbar layout exists.
+          target = '<div class="sep"></div>\n  <button class="tb" id="undoBtn"'
+          replacement = '<div class="sep"></div><span id="saveState" style="font-size:11px;color:#b9c2cd;white-space:nowrap">● 已保存</span>\n  <button class="tb" id="undoBtn"'
+          s = s.replace(target, replacement, 1)
 
-          # Add Ctrl+S and make global shortcuts ignore form fields/contenteditable.
+          # Make global shortcuts ignore form controls/contenteditable and add Ctrl+S.
           old = "document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key.toLowerCase()==='z'){e.preventDefault();doUndo()}else if(e.ctrlKey&&e.key.toLowerCase()==='y'){e.preventDefault();doRedo()}else if(e.key==='Delete'&&selected&&!readonly){removeSelected()}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)&&selected&&!readonly&&!locked(selected)&&document.activeElement!==selected){e.preventDefault();pushHistory();const dx=e.key==='ArrowLeft'?-1:e.key==='ArrowRight'?1:0,dy=e.key==='ArrowUp'?-1:e.key==='ArrowDown'?1:0;selected.style.left=(selected.offsetLeft+dx)+'px';selected.style.top=(selected.offsetTop+dy)+'px';syncPanelFromSelection();showSelectionBox()}});"
           new = "document.addEventListener('keydown',e=>{const tag=document.activeElement?.tagName;const editing=!!document.activeElement?.isContentEditable||['INPUT','SELECT','TEXTAREA'].includes(tag);if(e.ctrlKey&&e.key.toLowerCase()==='z'&&!editing){e.preventDefault();doUndo()}else if(e.ctrlKey&&e.key.toLowerCase()==='y'&&!editing){e.preventDefault();doRedo()}else if(e.ctrlKey&&e.key.toLowerCase()==='s'){e.preventDefault();document.getElementById('saveBtn').click()}else if(e.key==='Delete'&&selected&&!readonly&&!editing){removeSelected()}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)&&selected&&!readonly&&!locked(selected)&&!editing){e.preventDefault();pushHistory();const dx=e.key==='ArrowLeft'?-1:e.key==='ArrowRight'?1:0,dy=e.key==='ArrowUp'?-1:e.key==='ArrowDown'?1:0;selected.style.left=(selected.offsetLeft+dx)+'px';selected.style.top=(selected.offsetTop+dy)+'px';syncPanelFromSelection();showSelectionBox()}});"
           if old in s:
-              s = s.replace(old,new,1)
+              s = s.replace(old, new, 1)
 
-          # Upgrade save/load to v7 and add automatic draft recovery.
+          # Upgrade the stored layout key and always keep the print watermark visible.
           s = s.replace("localStorage.setItem('medical_emr_editor_v6'", "localStorage.setItem('medical_emr_editor_v7'", 1)
           s = s.replace("localStorage.getItem('medical_emr_editor_v6')", "localStorage.getItem('medical_emr_editor_v7')", 1)
-
-          # Make the watermark immutable during print even if the edit-mode toggle was used.
           s = s.replace('.watermark{display:flex}.node.selected', '.watermark{display:flex!important}.node.selected', 1)
 
           s += '\n' + marker + '\n'
           p.write_text(s, encoding='utf-8')
 
-      - name: Validate JavaScript syntax
+      - name: Validate JavaScript syntax and basic HTML wiring
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          from bs4 import BeautifulSoup
-          soup = BeautifulSoup(Path('index.html').read_text(encoding='utf-8'), 'html.parser')
-          Path('/tmp/app.js').write_text(soup.find('script').string or '', encoding='utf-8')
+          import re
+          s = Path('index.html').read_text(encoding='utf-8')
+          m = re.search(r'<script>([\\s\\S]*?)</script>', s)
+          if not m:
+              raise SystemExit('No inline script found')
+          Path('/tmp/app.js').write_text(m.group(1), encoding='utf-8')
+          ids = re.findall(r'\\bid=["\\']([^"\\']+)["\\']', s)
+          if len(ids) != len(set(ids)):
+              raise SystemExit('Duplicate HTML ids detected')
+          print('HTML ids:', len(ids))
           PY
           node --check /tmp/app.js
 
