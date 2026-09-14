@@ -1,1 +1,171 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>医疗文书编辑器 Demo</title><style>html,body{margin:0;height:100%;font-family:Arial,"Microsoft YaHei",sans-serif;background:#eef1f5;color:#222}*{box-sizing:border-box}.top{height:58px;background:#20252b;color:#fff;display:flex;align-items:center;padding:0 16px;gap:12px}.top b{font-size:18px}.badge{background:#8b1e1e;border-radius:999px;padding:4px 9px;font-size:12px}.layout{display:grid;grid-template-columns:290px 1fr 300px;height:calc(100vh - 58px)}.side{background:#fff;border-right:1px solid #d8dde4;overflow:auto;padding:14px}.right{border-right:0;border-left:1px solid #d8dde4}.group{margin-bottom:18px}.group h3{font-size:14px;margin:0 0 9px}.btn{width:100%;padding:8px 10px;border:1px solid #cbd1d8;background:#fafbfc;border-radius:6px;margin-bottom:6px;text-align:left;cursor:pointer}.btn.active{border-color:#4777c9;background:#eef4ff}.toolbar{margin-left:auto;display:flex;gap:6px}.toolbar button{padding:7px 10px;border:1px solid #59616b;background:#2b3138;color:#fff;border-radius:5px;cursor:pointer}.stage{overflow:auto;padding:30px;display:flex;justify-content:center;align-items:flex-start}.paper{position:relative;width:794px;min-height:1123px;background:#fff;box-shadow:0 4px 20px rgba(0,0,0,.18);overflow:hidden}.wm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:rotate(-28deg);font-size:60px;font-weight:700;color:rgba(170,0,0,.10);pointer-events:none;z-index:30}.node{position:absolute;z-index:10;white-space:pre-wrap;outline:none;cursor:text}.node.sel{outline:1px dashed #4777c9;background:rgba(71,119,201,.04)}.line{position:absolute;height:1px;background:#111;z-index:5}.soft{position:absolute;height:1px;background:#aaa;z-index:5}.field{width:100%;padding:7px;border:1px solid #cfd5dc;border-radius:5px}.prop{display:grid;grid-template-columns:1fr 1fr;gap:8px}.prop label{font-size:12px;color:#666}.prop input,.prop select{width:100%;padding:7px;border:1px solid #cfd5dc;border-radius:5px;margin-top:4px}.hint{font-size:12px;line-height:1.6;color:#666;background:#f7f8fa;padding:8px;border-radius:6px}.meta{font-size:12px;color:#666;line-height:1.7}.divider{height:1px;background:#e5e8ec;margin:12px 0}@media(max-width:1100px){.layout{grid-template-columns:250px 1fr}.right{display:none}}</style></head><body><header class="top"><b>医疗文书模板编辑器</b><span class="badge">仅用于界面/排版演示 · 非真实医疗文书</span><div class="toolbar"><button onclick="addText()">＋文字</button><button onclick="undo()">撤销</button><button onclick="redo()">重做</button><button onclick="save()">保存</button><button onclick="printDoc()">打印</button></div></header><div class="layout"><aside class="side"><div class="group"><h3>报告模板</h3><button class="btn active" onclick="useTemplate('ct')">螺旋CT检查报告单</button><button class="btn" onclick="useTemplate('us')">超声检查报告单</button></div><div class="group"><h3>文档元素</h3><div id="list"></div></div><div class="group"><h3>提示</h3><div class="hint">点击文字可直接编辑；拖动文字可调整位置；右侧可精确修改字体、字号和坐标。示例数据均为虚构或脱敏数据。</div></div></aside><main class="stage"><div class="paper" id="paper"><div class="wm">DEMO · 非真实医疗文书</div></div></main><aside class="side right"><div class="group"><h3>选中元素</h3><div class="prop"><div style="grid-column:1/-1"><label>文本</label><input id="txt"></div><div><label>字体</label><select id="font"><option>SimSun</option><option>Microsoft YaHei</option><option>SimHei</option><option>KaiTi</option><option>Arial</option></select></div><div><label>字号</label><input id="size" type="number" min="8" max="72"></div><div><label>字重</label><select id="weight"><option value="400">常规</option><option value="700">粗体</option></select></div><div><label>左</label><input id="left" type="number"></div><div><label>上</label><input id="top" type="number"></div><div><label>宽</label><input id="width" type="number"></div><div><label>高</label><input id="height" type="number"></div></div><div class="divider"></div><button class="btn" onclick="duplicate()">复制元素</button><button class="btn" onclick="removeNode()">删除元素</button></div><div class="group"><h3>状态</h3><div class="meta" id="status">未选择元素</div></div></aside></div><script>let selected=null,history=[],future=[];const paper=document.getElementById('paper');const list=document.getElementById('list');function snap(){return [...paper.querySelectorAll('.node')].map(e=>({text:e.innerText,style:e.getAttribute('style'),id:e.dataset.id}))}function push(){history.push(JSON.stringify(snap()));if(history.length>50)history.shift();future=[]}function apply(data){paper.querySelectorAll('.node').forEach(e=>e.remove());data.forEach(x=>{const e=document.createElement('div');e.className='node';e.dataset.id=x.id;e.innerText=x.text;e.setAttribute('style',x.style);bind(e);paper.appendChild(e)});selected=null;refresh()}function undo(){if(!history.length)return;future.push(JSON.stringify(snap()));apply(JSON.parse(history.pop()));}function redo(){if(!future.length)return;history.push(JSON.stringify(snap()));apply(JSON.parse(future.pop()));}function bind(e){e.addEventListener('click',ev=>{ev.stopPropagation();select(e)});e.addEventListener('input',()=>{if(selected===e)document.getElementById('txt').value=e.innerText});e.draggable=true;e.addEventListener('dragstart',ev=>ev.dataTransfer.setData('text/plain',e.dataset.id));e.addEventListener('dragend',ev=>{const r=paper.getBoundingClientRect();e.style.left=(ev.clientX-r.left+paper.scrollLeft-10)+'px';e.style.top=(ev.clientY-r.top+paper.scrollTop-10)+'px';select(e);push()})}paper.addEventListener('dragover',e=>e.preventDefault());paper.addEventListener('click',()=>select(null));function addText(){push();const e=document.createElement('div');e.className='node';e.dataset.id='t'+Date.now();e.style='left:120px;top:220px;width:260px;font:14px SimSun;';e.contentEditable='true';e.innerText='新文字';bind(e);paper.appendChild(e);select(e)}function select(e){if(selected)selected.classList.remove('sel');selected=e;if(!e){document.getElementById('status').innerText='未选择元素';refresh();return}e.classList.add('sel');document.getElementById('txt').value=e.innerText;document.getElementById('font').value=getComputedStyle(e).fontFamily.split(',')[0].replaceAll('"','');document.getElementById('size').value=parseInt(getComputedStyle(e).fontSize);document.getElementById('weight').value=getComputedStyle(e).fontWeight;document.getElementById('left').value=parseInt(e.style.left)||e.offsetLeft;document.getElementById('top').value=parseInt(e.style.top)||e.offsetTop;document.getElementById('width').value=parseInt(e.style.width)||e.offsetWidth;document.getElementById('height').value=parseInt(e.style.height)||e.offsetHeight;document.getElementById('status').innerText='已选择：'+e.dataset.id;refresh()}function refresh(){list.innerHTML='';[...paper.querySelectorAll('.node')].forEach((e,i)=>{const b=document.createElement('button');b.className='btn'+(e===selected?' active':'');b.innerText=(i+1)+'. '+e.dataset.id;b.onclick=()=>select(e);list.appendChild(b)})}function set(id,fn){document.getElementById(id).addEventListener('input',()=>{if(!selected)return;fn(selected,document.getElementById(id).value);refresh()})}set('txt',(e,v)=>e.innerText=v);set('font',(e,v)=>e.style.fontFamily=v);set('size',(e,v)=>e.style.fontSize=v+'px');set('weight',(e,v)=>e.style.fontWeight=v);set('left',(e,v)=>e.style.left=v+'px');set('top',(e,v)=>e.style.top=v+'px');set('width',(e,v)=>e.style.width=v+'px');set('height',(e,v)=>e.style.height=v+'px');function duplicate(){if(!selected)return;push();const e=selected.cloneNode(true);e.dataset.id=selected.dataset.id+'_copy';e.style.left=(selected.offsetLeft+15)+'px';e.style.top=(selected.offsetTop+15)+'px';bind(e);paper.appendChild(e);select(e)}function removeNode(){if(!selected)return;push();selected.remove();selected=null;refresh()}function save(){localStorage.setItem('medical_editor_demo',JSON.stringify(snap()));alert('布局已保存到本浏览器。')}function printDoc(){window.print()}function useTemplate(type){push();paper.querySelectorAll('.node,.line,.soft').forEach(e=>e.remove());if(type==='ct'){add('hospital','郑州某某医院（示例）','left:190px;top:30px;width:414px;text-align:center;font:700 23px SimSun');add('title','螺旋CT检查报告单（示例）','left:220px;top:70px;width:354px;text-align:center;font:700 16px SimSun');line(55,100,739);add('b1','姓名：匿名患者　　性别：男　　年龄：27岁','left:55px;top:115px;width:330px;font:14px SimSun');add('b2','影像号：DEMO-000001','left:470px;top:115px;width:250px;font:14px SimSun');add('b3','科室：门诊外科　　　　　　　　　就诊日期：2026-01-01','left:55px;top:145px;width:665px;font:14px SimSun');add('b4','门诊号：DEMO-000002　　　　　　报告日期：2026-01-01','left:55px;top:175px;width:665px;font:14px SimSun');line(55,205,739);add('item','检查名称：16排CT平扫\n检查部位：腰椎椎间盘','left:55px;top:220px;width:665px;font:14px SimSun;line-height:1.6');line(55,285,739);add('fx','影像表现：','left:55px;top:305px;width:110px;font:700 14px SimSun');add('body','腰椎生理曲度存在，排列可，L4-5、L5-S1椎间盘变扁，L4-5椎间盘偏左、L5-S1椎间盘偏左；椎管前后径改变。','left:55px;top:335px;width:680px;font:14px SimSun;line-height:1.85');add('yx','印象：','left:55px;top:760px;width:80px;font:700 14px SimSun');add('imp','1. L4-5椎间盘突出、偏左\n2. L5-S1椎间盘突出、偏左\n请结合临床及其他相关检查','left:55px;top:790px;width:500px;font:14px SimSun;line-height:1.8');line(55,1005,739);add('footer','报告医师：示例　　　　　　　　　审核医师：示例','left:250px;top:1020px;width:480px;font:14px SimSun');add('note','（此报告仅用于界面/排版演示，不作医疗凭证）','left:160px;top:1060px;width:520px;text-align:center;font:11px SimSun;color:#777')}else{add('hospital','某某大学附属医院（示例）','left:190px;top:35px;width:414px;text-align:center;font:700 23px SimSun');add('title','超声检查报告单（示例）','left:220px;top:75px;width:354px;text-align:center;font:700 16px SimSun');line(55,105,739);add('basic','姓名：匿名患者　　性别：男　　年龄：17岁　　检查号：DEMO-000001','left:55px;top:120px;width:680px;font:14px SimSun');add('clinical','临床诊断：示例','left:55px;top:150px;width:680px;font:14px SimSun');add('item','检查项目：双肾及输尿管膀胱超声（示例）','left:55px;top:180px;width:680px;font:14px SimSun');line(55,215,739);add('t1','超声所见：','left:55px;top:235px;width:100px;font:700 14px SimSun');add('t2','这里放置超声所见示例文字，用于演示排版、字体和位置调整。','left:55px;top:270px;width:680px;font:14px SimSun;line-height:1.8');add('t3','超声提示：','left:55px;top:470px;width:100px;font:700 14px SimSun');add('t4','① 示例项目一\n② 示例项目二\n③ 示例项目三','left:55px;top:505px;width:680px;font:14px SimSun;line-height:1.8')}refresh()}function add(id,text,style){const e=document.createElement('div');e.className='node';e.dataset.id=id;e.innerText=text;e.setAttribute('style',style);bind(e);paper.appendChild(e)}function line(l,t,r){const e=document.createElement('div');e.className='line';e.style=`left:${l}px;top:${t}px;width:${r-l}px`;paper.appendChild(e)}useTemplate('ct');</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>医疗文书模板编辑器</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;font-family:"Microsoft YaHei",Arial,sans-serif;background:#eef1f5;color:#222}
+button,input,select{font:inherit}.app{height:100%;display:flex;flex-direction:column}
+.topbar{height:50px;display:flex;align-items:center;gap:6px;padding:0 10px;background:#24282e;color:#fff;border-bottom:1px solid #111}
+.brand{font-weight:700;font-size:15px;padding:0 10px 0 3px;white-space:nowrap}.badge{font-size:11px;background:#8b1e1e;padding:4px 8px;border-radius:10px;white-space:nowrap}
+.tb{height:30px;min-width:32px;border:0;border-radius:4px;background:#31363d;color:#fff;cursor:pointer;padding:0 9px}.tb:hover{background:#3e454e}.tb.on{background:#4a78c9}.sep{width:1px;height:22px;background:#4b5159;margin:0 2px}.spacer{flex:1}
+.main{flex:1;min-height:0;display:grid;grid-template-columns:240px 1fr 270px}
+.panel{background:#fff;min-width:0;overflow:auto}.left{border-right:1px solid #d7dce2}.right{border-left:1px solid #d7dce2;padding:12px}
+.section{padding:12px 12px 0}.section h3{margin:0 0 8px;font-size:13px}.sub{font-size:11px;color:#8a9099;margin:-3px 0 8px}
+.item{width:100%;border:1px solid #d7dce2;background:#fafbfc;border-radius:5px;padding:7px 9px;margin-bottom:5px;text-align:left;cursor:pointer;font-size:12px}.item:hover{background:#f2f5f9}.item.active{background:#eef4ff;border-color:#4777c9}
+.tree{border-left:1px solid #e1e5e9;margin-left:7px;padding-left:8px}.tree .item{font-size:11px}
+.stage{overflow:auto;padding:28px 32px;display:flex;justify-content:center;align-items:flex-start;background:#f0f2f5}.paper{position:relative;width:794px;height:1123px;flex:none;background:#fff;box-shadow:0 3px 20px rgba(0,0,0,.18);overflow:hidden}
+.paper.readonly .edit-node{cursor:default}.paper.readonly .edit-node:focus{outline:none}.paper.readonly .selection{display:none}
+.watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:100;transform:rotate(-31deg);font-size:68px;font-weight:700;letter-spacing:8px;color:rgba(185,30,30,.09)}
+.edit-node{position:absolute;z-index:20;white-space:pre-wrap;outline:none;min-width:8px;min-height:18px;cursor:text}.edit-node[contenteditable=true]{cursor:text}.edit-node.selected{outline:1px dashed #4a79c6;background:rgba(74,121,198,.035)}
+.rule{position:absolute;height:1px;background:#111;z-index:10}.thin{height:1px;background:#333}.soft{background:#aaa}
+.anchor{position:absolute;z-index:1;display:none}.selection{position:absolute;z-index:90;border:1px solid #4a79c6;pointer-events:none;display:none}
+.toolbar2{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.mini{border:1px solid #cdd3da;background:#fff;border-radius:5px;padding:6px 9px;font-size:11px;cursor:pointer}.mini:hover{background:#f5f7f9}
+.propgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.propgrid>div.full{grid-column:1/-1}.propgrid label{display:block;font-size:11px;color:#666}.propgrid input,.propgrid select{width:100%;margin-top:3px;padding:6px;border:1px solid #cdd3da;border-radius:4px;background:#fff}
+.note{font-size:11px;line-height:1.6;color:#6d737c;background:#f7f8fa;border:1px solid #e3e6ea;padding:8px;border-radius:5px}
+.status{font-size:11px;color:#666;line-height:1.7}.pill{display:inline-block;padding:2px 6px;border-radius:10px;background:#edf2f7;margin:0 3px 3px 0}
+.data-chip{display:inline-block;padding:1px 5px;background:#eef5ff;border:1px dashed #6d8fc7;border-radius:3px;color:#3563a4}
+@media(max-width:1000px){.main{grid-template-columns:210px 1fr}.right{display:none}}
+@media print{html,body{overflow:visible;background:#fff}.topbar,.left,.right{display:none}.main{display:block}.stage{padding:0;background:#fff}.paper{box-shadow:none;margin:0}.watermark{display:flex}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">医疗文书模板编辑器</div>
+    <span class="badge">仅用于界面/排版演示 · 非真实医疗文书</span>
+    <div class="sep"></div>
+    <button class="tb" title="撤销" onclick="undo()">↶</button>
+    <button class="tb" title="重做" onclick="redo()">↷</button>
+    <div class="sep"></div>
+    <button class="tb" onclick="toggleReadonly()">只读</button>
+    <button class="tb" onclick="toggleRevision()">修订</button>
+    <button class="tb" onclick="insertText()">文字</button>
+    <button class="tb" onclick="insertData('time')">时间</button>
+    <button class="tb" onclick="insertData('single')">单选</button>
+    <button class="tb" onclick="insertData('select')">下拉</button>
+    <button class="tb" onclick="insertTable()">表格</button>
+    <button class="tb" onclick="toggleWatermark()">水印</button>
+    <div class="spacer"></div>
+    <button class="tb" onclick="saveLayout()">保存</button>
+    <button class="tb" onclick="loadLayout()">载入</button>
+    <button class="tb" onclick="window.print()">打印</button>
+  </header>
+  <div class="main">
+    <aside class="panel left">
+      <div class="section">
+        <h3>报告模板</h3>
+        <div class="sub">选择模板后可继续编辑</div>
+        <button class="item active" id="ctBtn" onclick="useTemplate('ct')">螺旋CT检查报告单</button>
+        <button class="item" id="usBtn" onclick="useTemplate('us')">超声检查报告单</button>
+      </div>
+      <div class="section">
+        <h3>文档结构</h3>
+        <div id="tree" class="tree"></div>
+      </div>
+      <div class="section">
+        <h3>数据元</h3>
+        <button class="item" onclick="insertData('text')">文本数据元</button>
+        <button class="item" onclick="insertData('time')">日期 / 时间</button>
+        <button class="item" onclick="insertData('single')">单选数据元</button>
+        <button class="item" onclick="insertData('select')">下拉数据元</button>
+      </div>
+      <div class="section" style="padding-bottom:14px">
+        <div class="note">交互参考 HmEditor 的结构化病历思路：模板、数据元、只读、修订、水印、表格等能力。当前页面为独立前端演示实现。</div>
+      </div>
+    </aside>
+    <main class="stage"><div class="paper" id="paper"><div class="watermark" id="watermark">DEMO · 非真实医疗文书</div></div></main>
+    <aside class="panel right">
+      <div class="section" style="padding:0">
+        <h3>元素属性</h3>
+        <div class="toolbar2">
+          <button class="mini" onclick="align('left')">左对齐</button>
+          <button class="mini" onclick="align('center')">居中</button>
+          <button class="mini" onclick="bold()">加粗</button>
+          <button class="mini" onclick="duplicate()">复制</button>
+          <button class="mini" onclick="removeNode()">删除</button>
+        </div>
+        <div class="propgrid">
+          <div class="full"><label>内容</label><input id="txt" oninput="setProp('text',this.value)"></div>
+          <div><label>字体</label><select id="font" onchange="setProp('font',this.value)"><option value="SimSun">宋体</option><option value="NSimSun">新宋体</option><option value="SimHei">黑体</option><option value="FangSong">仿宋</option><option value="KaiTi">楷体</option><option value="Microsoft YaHei">微软雅黑</option><option value="STSong">华文宋体</option><option value="Arial">Arial</option></select></div>
+          <div><label>字号</label><input id="size" type="number" min="8" max="48" onchange="setProp('size',this.value)"></div>
+          <div><label>字重</label><select id="weight" onchange="setProp('weight',this.value)"><option value="400">常规</option><option value="600">半粗</option><option value="700">粗体</option></select></div>
+          <div><label>行高</label><input id="line" type="number" step="0.1" min="1" max="3" onchange="setProp('line',this.value)"></div>
+          <div><label>左(px)</label><input id="left" type="number" onchange="setProp('left',this.value)"></div>
+          <div><label>上(px)</label><input id="top" type="number" onchange="setProp('top',this.value)"></div>
+          <div><label>宽(px)</label><input id="width" type="number" onchange="setProp('width',this.value)"></div>
+          <div><label>高(px)</label><input id="height" type="number" onchange="setProp('height',this.value)"></div>
+        </div>
+      </div>
+      <div class="section" style="padding:14px 0 0">
+        <h3>编辑状态</h3>
+        <div id="status" class="status">未选择元素</div>
+      </div>
+      <div class="section" style="padding:14px 0 0">
+        <h3>说明</h3>
+        <div class="note">中文字体优先采用宋体 / 新宋体 / 华文宋体字体栈，避免使用单一微软雅黑导致报告正文视觉偏差。最终字形仍取决于访问者系统是否安装对应字体。</div>
+      </div>
+    </aside>
+  </div>
+</div>
+<script>
+const paper=document.getElementById('paper'),tree=document.getElementById('tree'),wm=document.getElementById('watermark');
+let selected=null,history=[],future=[],readonly=false,revision=false,waterOn=true;
+const stack='SimSun,"Songti SC","STSong",NSimSun,serif';
+function pushHistory(){history.push(JSON.stringify(snapshot()));if(history.length>60)history.shift();future=[]}
+function snapshot(){return [...paper.querySelectorAll('.edit-node')].map(e=>({id:e.dataset.id,text:e.innerText,style:e.getAttribute('style')}))}
+function restore(data){paper.querySelectorAll('.edit-node,.rule').forEach(e=>e.remove());data.forEach(x=>{const e=document.createElement('div');e.className='edit-node';e.dataset.id=x.id;e.innerText=x.text;e.setAttribute('style',x.style||'');e.contentEditable=!readonly;e.draggable=!readonly;bind(e);paper.appendChild(e)});selected=null;refreshTree()}
+function undo(){if(!history.length)return;future.push(JSON.stringify(snapshot()));restore(JSON.parse(history.pop()))}
+function redo(){if(!future.length)return;history.push(JSON.stringify(snapshot()));restore(JSON.parse(future.pop()))}
+function baseNode(id,text,style){const e=document.createElement('div');e.className='edit-node';e.dataset.id=id;e.innerText=text;e.setAttribute('style',style);e.contentEditable=!readonly;e.draggable=!readonly;bind(e);paper.appendChild(e);return e}
+function rule(left,top,width){const e=document.createElement('div');e.className='rule';e.style=`left:${left}px;top:${top}px;width:${width}px`;paper.appendChild(e)}
+function bind(e){e.addEventListener('click',ev=>{ev.stopPropagation();select(e)});e.addEventListener('focus',()=>select(e));e.addEventListener('input',()=>{if(selected===e)document.getElementById('txt').value=e.innerText;refreshTree()});e.addEventListener('dragend',ev=>{if(readonly)return;const r=paper.getBoundingClientRect();e.style.left=Math.round(ev.clientX-r.left-10)+'px';e.style.top=Math.round(ev.clientY-r.top-10)+'px';select(e);pushHistory()})}
+paper.addEventListener('click',()=>select(null));
+function select(e){if(selected)selected.classList.remove('selected');selected=e;if(!e){document.getElementById('status').innerText='未选择元素';refreshTree();return}e.classList.add('selected');const s=getComputedStyle(e);document.getElementById('txt').value=e.innerText;document.getElementById('font').value=(s.fontFamily||'SimSun').split(',')[0].replaceAll('"','').trim();document.getElementById('size').value=parseInt(s.fontSize);document.getElementById('weight').value=s.fontWeight;document.getElementById('line').value=parseFloat(s.lineHeight)/parseFloat(s.fontSize)||1.5;document.getElementById('left').value=parseInt(e.style.left)||e.offsetLeft;document.getElementById('top').value=parseInt(e.style.top)||e.offsetTop;document.getElementById('width').value=parseInt(e.style.width)||e.offsetWidth;document.getElementById('height').value=parseInt(e.style.height)||e.offsetHeight;document.getElementById('status').innerHTML='<span class="pill">'+e.dataset.id+'</span> 可编辑元素';refreshTree()}
+function refreshTree(){tree.innerHTML='';[...paper.querySelectorAll('.edit-node')].forEach((e,i)=>{const b=document.createElement('button');b.className='item'+(e===selected?' active':'');b.textContent=(i+1)+'. '+(e.dataset.id||'文字');b.onclick=()=>select(e);tree.appendChild(b)})}
+function setProp(type,v){if(!selected)return;pushHistory();if(type==='text')selected.innerText=v;if(type==='font')selected.style.fontFamily=v;if(type==='size')selected.style.fontSize=v+'px';if(type==='weight')selected.style.fontWeight=v;if(type==='line')selected.style.lineHeight=v;if(type==='left')selected.style.left=v+'px';if(type==='top')selected.style.top=v+'px';if(type==='width')selected.style.width=v+'px';if(type==='height')selected.style.height=v+'px';refreshTree()}
+function align(a){if(!selected)return;pushHistory();selected.style.textAlign=a}
+function bold(){if(!selected)return;pushHistory();selected.style.fontWeight=getComputedStyle(selected).fontWeight==='700'?'400':'700'}
+function duplicate(){if(!selected)return;pushHistory();const e=selected.cloneNode(true);e.dataset.id=selected.dataset.id+'_copy';e.style.left=(selected.offsetLeft+18)+'px';e.style.top=(selected.offsetTop+18)+'px';e.contentEditable=!readonly;e.draggable=!readonly;bind(e);paper.appendChild(e);select(e)}
+function removeNode(){if(!selected)return;pushHistory();selected.remove();selected=null;refreshTree()}
+function insertText(){pushHistory();const e=baseNode('text_'+Date.now(),'新文字',`left:140px;top:300px;width:180px;font:14px ${stack};line-height:1.6`);select(e)}
+function insertData(type){pushHistory();const labels={text:'【文本数据元】',time:'【日期时间：YYYY-MM-DD】',single:'【单选：是/否】',select:'【下拉：示例选项】'};const e=baseNode('data_'+Date.now(),labels[type],`left:140px;top:340px;width:220px;font:14px ${stack};line-height:1.6`);e.classList.add('data-chip');select(e)}
+function insertTable(){pushHistory();const t=document.createElement('table');t.dataset.id='table_'+Date.now();t.style.cssText='position:absolute;left:130px;top:420px;width:520px;border-collapse:collapse;font:13px SimSun;z-index:25;background:#fff';for(let r=0;r<3;r++){const tr=t.insertRow();for(let c=0;c<3;c++){const td=tr.insertCell();td.contentEditable=!readonly;td.innerText='单元格';td.style='border:1px solid #222;padding:5px;height:28px'}}paper.appendChild(t);refreshTree()}
+function toggleReadonly(){readonly=!readonly;paper.classList.toggle('readonly',readonly);paper.querySelectorAll('.edit-node').forEach(e=>{e.contentEditable=!readonly;e.draggable=!readonly});event.currentTarget.classList.toggle('on',readonly)}
+function toggleRevision(){revision=!revision;event.currentTarget.classList.toggle('on',revision);paper.classList.toggle('revision',revision);alert(revision?'修订模式已开启（演示）':'修订模式已关闭')}
+function toggleWatermark(){waterOn=!waterOn;wm.style.display=waterOn?'flex':'none'}
+function saveLayout(){localStorage.setItem('medical_emr_layout_v3',JSON.stringify(snapshot()));alert('布局已保存到当前浏览器。')}
+function loadLayout(){const raw=localStorage.getItem('medical_emr_layout_v3');if(!raw){alert('暂无已保存布局');return}restore(JSON.parse(raw))}
+function clearTemplate(){paper.querySelectorAll('.edit-node,.rule,table').forEach(e=>e.remove())}
+function useTemplate(type){pushHistory();clearTemplate();document.getElementById('ctBtn').classList.toggle('active',type==='ct');document.getElementById('usBtn').classList.toggle('active',type==='us');if(type==='ct'){
+baseNode('hospital','郑州某某医院（示例）',`left:205px;top:38px;width:390px;text-align:center;font:700 23px ${stack};letter-spacing:.2px`);
+baseNode('reportTitle','螺旋CT检查报告单（示例）',`left:226px;top:73px;width:342px;text-align:center;font:700 16px ${stack}`);
+rule(55,106,684);
+baseNode('p1','姓名：匿名患者　　性别：男　　年龄：27岁',`left:55px;top:121px;width:410px;font:14px ${stack};letter-spacing:0`);
+baseNode('p2','影像号：DEMO-000001',`left:500px;top:121px;width:235px;font:14px ${stack}`);
+baseNode('p3','科室：门诊外科',`left:55px;top:151px;width:260px;font:14px ${stack}`);
+baseNode('p4','检查日期：2026-01-01',`left:330px;top:151px;width:260px;font:14px ${stack}`);
+baseNode('p5','门诊号：DEMO-000002',`left:55px;top:181px;width:260px;font:14px ${stack}`);
+baseNode('p6','报告日期：2026-01-01',`left:330px;top:181px;width:260px;font:14px ${stack}`);
+rule(55,204,684);
+baseNode('i1','检查名称：16排CT平扫',`left:55px;top:220px;width:350px;font:14px ${stack}`);
+baseNode('i2','检查部位：腰椎椎间盘',`left:55px;top:247px;width:350px;font:14px ${stack}`);
+rule(55,284,684);
+baseNode('fTitle','影像表现：',`left:55px;top:305px;width:100px;font:700 14px ${stack}`);
+baseNode('findings','腰椎生理曲度存在，排列可，L4-5、L5-S1椎间盘变扁，L4-5椎间盘偏左，L5-S1椎间盘偏左，椎管前后径改变，黄韧带无肥厚，椎体未见明显骨质增生。',`left:55px;top:338px;width:683px;height:120px;font:14px ${stack};line-height:1.75;letter-spacing:-.1px`);
+baseNode('imTitle','印象：',`left:55px;top:784px;width:80px;font:700 14px ${stack}`);
+baseNode('impression','1. L4-5椎间盘突出、偏左\n2. L5-S1椎间盘突出、偏左\n请结合临床及其他相关检查',`left:55px;top:817px;width:520px;height:100px;font:14px ${stack};line-height:1.75`);
+rule(55,1005,684);
+baseNode('doctors','报告医师：示例　　　　　　　　　审核医师：示例',`left:255px;top:1021px;width:475px;font:14px ${stack}`);
+baseNode('notice','（此页面仅用于界面/排版演示，不作医疗凭证）',`left:154px;top:1058px;width:520px;text-align:center;font:11px ${stack};color:#777`);
+baseNode('address','示例医院信息　电话：000-00000000　　示例地址：某某路100号',`left:120px;top:1081px;width:575px;text-align:center;font:10px ${stack};color:#777`);
+}else{
+baseNode('hospital','某某大学附属医院（示例）',`left:190px;top:38px;width:414px;text-align:center;font:700 23px ${stack}`);
+baseNode('reportTitle','超声检查报告单（示例）',`left:225px;top:73px;width:344px;text-align:center;font:700 16px ${stack}`);
+rule(55,106,684);baseNode('basic','姓名：匿名患者　　性别：男　　年龄：17岁　　检查号：DEMO-000001',`left:55px;top:121px;width:680px;font:14px ${stack}`);baseNode('clinical','临床诊断：示例',`left:55px;top:151px;width:680px;font:14px ${stack}`);baseNode('item','检查项目：双肾及输尿管膀胱超声（示例）',`left:55px;top:181px;width:680px;font:14px ${stack}`);rule(55,213,684);baseNode('findTitle','超声所见：',`left:55px;top:234px;width:100px;font:700 14px ${stack}`);baseNode('find','这里放置超声所见示例文字，用于演示段落排版、字体和位置调整。',`left:55px;top:267px;width:680px;height:150px;font:14px ${stack};line-height:1.8`);baseNode('hintTitle','超声提示：',`left:55px;top:465px;width:100px;font:700 14px ${stack}`);baseNode('hint','① 示例项目一\n② 示例项目二\n③ 示例项目三',`left:55px;top:500px;width:680px;font:14px ${stack};line-height:1.8`)
+}refreshTree();select(null)}
+useTemplate('ct');
+</script>
+</body>
+</html>
