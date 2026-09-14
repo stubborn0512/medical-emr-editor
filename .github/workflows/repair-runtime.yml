@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Repair inline parser and validator
+      - name: Repair inline parser
         shell: bash
         run: |
           set -euo pipefail
@@ -26,7 +26,6 @@ jobs:
 
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
-
           new_parse = r'''function parse(text){const out=[],seen=new Set(),add=(f,v)=>{v=String(v).trim();if(v&&!seen.has(f)&&v.length<=1500){seen.add(f);out.push({field:f,value:v})}};const lines=text.split(/\r?\n|[；;]/).map(x=>x.trim()).filter(Boolean),all=lines.join('\n');for(const line of lines){const m=line.match(/^([^：:]{1,14})\s*[：:]\s*(.+)$/);if(m){const c=canon(m[1]);if(c){add(c,m[2]);continue}}const ga=line.match(/^(男|女|男性|女性)\s*[，,、]\s*(\d{1,3})\s*岁?$/);if(ga){add('性别',ga[1]);add('年龄',ga[2]+'岁');continue}const d=line.match(/(20\d{2}[年\/-]\d{1,2}[月\/-]\d{1,2}日?)/);if(d&&/日期|时间|就诊|检查|报告|复诊|随访/.test(line))add(/报告/.test(line)?'报告日期':/检查/.test(line)?'检查日期':/复诊|随访/.test(line)?'复诊日期':'就诊日期',d[1]);const ph=line.match(/(?<!\d)(1[3-9]\d{9})(?!\d)/);if(ph&&/电话|手机|联系/.test(line))add('联系电话',ph[1])}if(!seen.has('性别')){const g=all.match(/(?:^|[\s，,])([男女])(?:性)?(?:[\s，,。]|$)/);if(g)add('性别',g[1])}if(!seen.has('年龄')){const a=all.match(/(\d{1,3})\s*岁/);if(a)add('年龄',a[1]+'岁')}return out}'''
 
           s2, n = re.subn(r'function parse\(text\)\{.*?return out\}', lambda m: new_parse, s, count=1, flags=re.S)
@@ -36,32 +35,35 @@ jobs:
           print('Repaired parser function')
           PY
 
+      - name: Validate inline editor script
+        shell: bash
+        run: |
+          set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          p = Path('.github/workflows/validate.yml')
-          s = p.read_text(encoding='utf-8')
-          old = "              'id=\"smart\"', 'id=\"smartModal\"', 'smart-identify.js'\n"
-          new = "              'id=\"smart\"', 'id=\"smartModal\"'\n"
-          if old in s:
-              s = s.replace(old, new)
-          else:
-              s = s.replace("              'id=\"smart\"', 'id=\"smartModal\"', 'smart-identify.js'", "              'id=\"smart\"', 'id=\"smartModal\"'")
-          p.write_text(s, encoding='utf-8')
-          print('Repaired validator marker check')
+          import re
+          s = Path('index.html').read_text(encoding='utf-8')
+          blocks = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', s, flags=re.S|re.I)
+          if len(blocks) != 1:
+              raise SystemExit(f'Expected exactly 1 inline script block, got {len(blocks)}')
+          Path('/tmp/editor.js').write_text(blocks[0], encoding='utf-8')
+          print('Inline script extracted')
           PY
+          node --check /tmp/editor.js
+          test -f smart-identify.js
+          node --check smart-identify.js
+          echo 'JavaScript syntax checks passed'
 
-          node --check /tmp/does-not-exist.js 2>/dev/null || true
-
-      - name: Commit repair
+      - name: Commit repaired app only
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add index.html .github/workflows/validate.yml
+          git add index.html
           if git diff --cached --quiet; then
-            echo 'No changes needed'
+            echo 'No app changes needed'
             exit 0
           fi
-          git commit -m 'fix: repair blank editor runtime'
+          git commit -m 'fix: restore editor initialization'
           git push
