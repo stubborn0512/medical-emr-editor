@@ -23,133 +23,85 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import re
-
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
           pat = re.compile(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', re.S | re.I)
           matches = list(pat.finditer(s))
           if len(matches) != 1:
               raise SystemExit(f'Expected exactly one inline script block, found {len(matches)}')
-
           script = matches[0].group(1)
-          out = []
-          state = None              # None, single, double, template, regex
-          escaped = False
-          regex_class = False
-          last_sig = ''
-          word = []
-          changed = 0
-
-          def flush_word():
-              return ''.join(word)
-
+          out=[]; state=None; escaped=False; regex_class=False; last_sig=''; word=[]; changed=0
+          def prev_word(): return ''.join(word)
           def regex_allowed(prev_sig, prev_word):
-              return prev_sig in '([{=,:;!&|?+-*%~<>' or prev_word in {
-                  'return','case','throw','else','do','typeof','void','delete','in','of','yield','await'
-              }
-
-          i = 0
-          while i < len(script):
-              ch = script[i]
-
+              return prev_sig in '([{=,:;!&|?+-*%~<>' or prev_word in {'return','case','throw','else','do','typeof','void','delete','in','of','yield','await'}
+          i=0
+          while i<len(script):
+              ch=script[i]
               if state is None:
-                  # Track comments outside literals.
-                  if ch == '/' and i + 1 < len(script) and script[i + 1] == '/':
-                      j = i
-                      while j < len(script) and script[j] not in '\r\n':
-                          out.append(script[j]); j += 1
-                      i = j
-                      last_sig = ''
-                      word = []
-                      continue
-                  if ch == '/' and i + 1 < len(script) and script[i + 1] == '*':
-                      j = i
-                      while j + 1 < len(script):
-                          out.append(script[j]); out.append(script[j + 1])
-                          if script[j:j+2] == '*/':
-                              j += 2
-                              break
-                          j += 1
-                      i = j
-                      last_sig = ''
-                      word = []
-                      continue
-
-                  if ch == '`':
-                      state = 'template'; escaped = False; out.append(ch); i += 1; continue
-                  if ch == "'":
-                      state = 'single'; escaped = False; out.append(ch); i += 1; continue
-                  if ch == '"':
-                      state = 'double'; escaped = False; out.append(ch); i += 1; continue
-                  if ch == '/' and not (i + 1 < len(script) and script[i + 1] in '/*') and regex_allowed(last_sig, flush_word()):
-                      state = 'regex'; escaped = False; regex_class = False; out.append(ch); i += 1; continue
-
+                  if ch=='/' and i+1<len(script) and script[i+1]=='/':
+                      j=i
+                      while j<len(script) and script[j] not in '\r\n': out.append(script[j]); j+=1
+                      i=j; last_sig=''; word=[]; continue
+                  if ch=='/' and i+1<len(script) and script[i+1]=='*':
+                      j=i
+                      while j+1<len(script):
+                          out.append(script[j]); out.append(script[j+1])
+                          if script[j:j+2]=='*/': j+=2; break
+                          j+=1
+                      i=j; last_sig=''; word=[]; continue
+                  if ch=='`': state='template'; escaped=False; out.append(ch); i+=1; continue
+                  if ch=="'": state='single'; escaped=False; out.append(ch); i+=1; continue
+                  if ch=='"': state='double'; escaped=False; out.append(ch); i+=1; continue
+                  if ch=='/' and not (i+1<len(script) and script[i+1] in '/*') and regex_allowed(last_sig, prev_word()):
+                      state='regex'; escaped=False; regex_class=False; out.append(ch); i+=1; continue
                   out.append(ch)
-                  if ch.isspace():
-                      i += 1
-                      continue
-                  if ch.isalnum() or ch in '_$':
-                      word.append(ch)
+                  if ch.isspace(): i+=1; continue
+                  if ch.isalnum() or ch in '_$': word.append(ch)
                   else:
-                      if ch in '.)]}':
-                          pass
-                      else:
-                          word = []
-                      last_sig = ch
-                      if ch in ';,=([{:+-*%&|!?<>':
-                          word = []
-                  i += 1
-                  continue
-
-              if state == 'regex':
+                      if ch not in '.)]}': word=[]
+                      last_sig=ch
+                      if ch in ';,=([{:+-*%&|!?<>': word=[]
+                  i+=1; continue
+              if state=='regex':
                   out.append(ch)
-                  if escaped:
-                      escaped = False
-                  elif ch == '\\':
-                      escaped = True
-                  elif ch == '[':
-                      regex_class = True
-                  elif ch == ']' and regex_class:
-                      regex_class = False
-                  elif ch == '/' and not regex_class:
-                      state = None
-                      last_sig = '/'
-                      word = []
-                  i += 1
-                  continue
-
+                  if escaped: escaped=False
+                  elif ch=='\\': escaped=True
+                  elif ch=='[': regex_class=True
+                  elif ch==']' and regex_class: regex_class=False
+                  elif ch=='/' and not regex_class: state=None; last_sig='/'; word=[]
+                  i+=1; continue
               if escaped:
-                  out.append(ch)
-                  escaped = False
-                  i += 1
-                  continue
-
-              if ch == '\\':
-                  out.append(ch)
-                  escaped = True
-                  i += 1
-                  continue
-
-              if (state == 'single' and ch == "'") or (state == 'double' and ch == '"') or (state == 'template' and ch == '`'):
-                  out.append(ch)
-                  state = None
-                  i += 1
-                  continue
-
+                  out.append(ch); escaped=False; i+=1; continue
+              if ch=='\\': out.append(ch); escaped=True; i+=1; continue
+              if (state=='single' and ch=="'") or (state=='double' and ch=='"') or (state=='template' and ch=='`'):
+                  out.append(ch); state=None; i+=1; continue
               if state in ('single','double') and ch in '\r\n':
-                  out.extend(['\\','n'])
-                  changed += 1
-                  if ch == '\r' and i + 1 < len(script) and script[i + 1] == '\n':
-                      i += 1
-                  i += 1
-                  continue
-
-              out.append(ch)
-              i += 1
-
-          fixed = ''.join(out)
+                  out.extend(['\\','n']); changed+=1
+                  if ch=='\r' and i+1<len(script) and script[i+1]=='\n': i+=1
+                  i+=1; continue
+              out.append(ch); i+=1
+          fixed=''.join(out)
           p.write_text(s[:matches[0].start(1)] + fixed + s[matches[0].end(1):], encoding='utf-8')
-          print(f'Normalized {changed} literal newline(s) inside quoted JavaScript strings')
+          print(f'Normalized {changed} literal newline(s) inside quoted strings')
+          PY
+
+      - name: Add robust smart modal close handler
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          marker = '// Robust smart modal close fix'
+          if marker not in s:
+              patch = r'''\n// Robust smart modal close fix\n(()=>{const m=document.getElementById('smartModal'),c=document.getElementById('smartClose');const close=()=>{if(!m)return;m.classList.remove('show');m.style.setProperty('display','none','important');m.setAttribute('aria-hidden','true');document.body.style.overflow='';window.__smartOpen=false};if(c)c.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();close()},true);if(m)m.addEventListener('click',e=>{if(e.target===m)close()},true);document.addEventListener('keydown',e=>{if(e.key==='Escape'&&m&&(m.classList.contains('show')||m.style.display!=='none'))close()},true)})();\n'''
+              if '</script>' not in s: raise SystemExit('Missing closing script tag')
+              s = s.replace('</script>', patch + '</script>', 1)
+              p.write_text(s, encoding='utf-8')
+              print('Added robust close handler')
+          else:
+              print('Robust close handler already present')
           PY
 
       - name: Validate repaired app
@@ -168,7 +120,8 @@ jobs:
           node --check /tmp/editor.js
           test -f smart-identify.js
           node --check smart-identify.js
-          echo 'Repaired application JavaScript passed syntax checks'
+          grep -q 'Robust smart modal close fix' index.html
+          echo 'Editor validation passed'
 
       - name: Commit repaired app only
         shell: bash
@@ -181,5 +134,5 @@ jobs:
             echo 'No app changes needed'
             exit 0
           fi
-          git commit -m 'fix: restore editor script syntax'
+          git commit -m 'fix: close smart identify modal reliably'
           git push
