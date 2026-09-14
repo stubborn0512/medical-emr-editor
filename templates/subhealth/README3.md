@@ -1,0 +1,1 @@
+The reference-inspired half-page templates do not include placeholder underline characters in the editable content.
