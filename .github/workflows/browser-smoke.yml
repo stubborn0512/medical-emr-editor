@@ -65,7 +65,7 @@ jobs:
           if(await page.locator('#smart').count()!==1) throw new Error('Smart identify button missing');
           if(await page.locator('#handSignBtn').count()!==1) throw new Error('Handwriting signature button missing');
           await page.locator('.sh[data-sh="skin"]').click();
-          await page.waitForTimeout(700);
+          await page.waitForTimeout(1000);
           const active=await page.locator('.sh[data-sh="skin"]').evaluate(el=>el.classList.contains('active'));
           const paperHeight=await page.locator('#paper').evaluate(el=>el.offsetHeight);
           const paperWidth=await page.locator('#paper').evaluate(el=>el.offsetWidth);
@@ -73,6 +73,13 @@ jobs:
           if(!active) throw new Error('Skin template did not activate');
           if(paperWidth!==864||paperHeight!==611) throw new Error(`Unexpected half-page size: ${paperWidth}x${paperHeight}`);
           if(overflow>0) throw new Error(`Half-page element overflow count: ${overflow}`);
+          const defaultSign=page.locator('#paper .node[data-id="sign"]');
+          if(await defaultSign.count()!==1) throw new Error('Signature node was not created by skin template');
+          const defaultSignStyle=await defaultSign.evaluate(el=>({inline:el.style.fontFamily,computed:getComputedStyle(el).fontFamily,size:el.style.fontSize,marker:el.dataset.handwritingSignature,text:el.textContent}));
+          const defaultFontLoaded=await page.evaluate(()=>document.fonts.check('28px "Ma Shan Zheng"','示例医生'));
+          if(defaultSignStyle.marker!=='1') throw new Error('Default signature was not re-styled after template rebuild');
+          if(!defaultSignStyle.inline.includes('Ma Shan Zheng')) throw new Error('Default signature font family is not Ma Shan Zheng after template rebuild');
+          if(!defaultFontLoaded) throw new Error('Ma Shan Zheng Chinese font did not load before applying default signature');
           await page.locator('#handSignBtn').click();
           await page.waitForTimeout(400);
           if(await page.locator('#sigModal').evaluate(el=>getComputedStyle(el).display)!=='flex') throw new Error('Signature modal did not open');
@@ -86,7 +93,9 @@ jobs:
           const signStyle=await sign.evaluate(el=>({inline:el.style.fontFamily,computed:getComputedStyle(el).fontFamily,size:el.style.fontSize,marker:el.dataset.handwritingSignature,text:el.textContent}));
           const fontLoaded=await page.evaluate(()=>document.fonts.check('28px "Ma Shan Zheng"','示例医生'));
           await page.screenshot({path:'artifacts/handwriting-signature.png'});
-          console.log({title:await page.title(),skinActive:active,paperWidth,paperHeight,overflow,selectedFont,signStyle,fontLoaded,errors});
+          await page.emulateMedia({media:'print'});
+          await page.pdf({path:'artifacts/skin-halfpage.pdf',printBackground:true,preferCSSPageSize:true});
+          console.log({title:await page.title(),skinActive:active,paperWidth,paperHeight,overflow,defaultSignStyle,defaultFontLoaded,selectedFont,signStyle,fontLoaded,errors});
           if(errors.length) throw new Error(errors.join(' | '));
           if(signStyle.marker!=='1') throw new Error('Handwriting signature marker missing');
           if(!signStyle.inline.includes('Ma Shan Zheng')) throw new Error('Signature inline font family is not Ma Shan Zheng');
@@ -95,10 +104,28 @@ jobs:
           await browser.close();
           EOF
           node smoke.mjs
-      - name: Upload browser screenshots
+      - name: Verify half-page PDF dimensions
+        shell: bash
+        run: |
+          python -m pip install --quiet pypdf
+          python - <<'PY'
+          from pypdf import PdfReader
+          p=PdfReader('artifacts/skin-halfpage.pdf')
+          if len(p.pages)!=1:
+              raise SystemExit(f'Expected exactly 1 PDF page, got {len(p.pages)}')
+          box=p.pages[0].mediabox
+          w=float(box.width); h=float(box.height)
+          target_w=210/25.4*72
+          target_h=148.5/25.4*72
+          print(f'PDF MediaBox: {w:.3f} x {h:.3f} pt; target {target_w:.3f} x {target_h:.3f} pt')
+          if abs(w-target_w)>1.0 or abs(h-target_h)>1.0:
+              raise SystemExit(f'Half-page PDF size mismatch: {w:.3f} x {h:.3f} pt')
+          print('Half-page PDF dimensions verified')
+          PY
+      - name: Upload browser screenshots and PDF
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-smoke-screenshots
-          path: artifacts/*.png
+          name: browser-smoke-artifacts
+          path: artifacts/*
           if-no-files-found: ignore
