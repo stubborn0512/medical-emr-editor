@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -12,6 +12,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+      - name: Ensure half-page print CSS
+        id: printfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          old='@media print{@page{size:216mm 313.5mm;margin:0}html,body{overflow:visible;background:#fff}.top,.left,.right{display:none!important}.grid{display:block;height:auto}.stage{padding:0;overflow:visible}.paper{transform:none;box-shadow:none}.selbox,.handle{display:none!important}.node.sel{outline:none;background:none}.wm{display:none!important}}'
+          new='@media print{@page a4Paper{size:210mm 297mm;margin:0}@page subhealthHalfPage{size:210mm 148.5mm;margin:0}html,body{overflow:visible;background:#fff}.app{page:a4Paper}.top,.left,.right{display:none!important}.grid{display:block;height:auto}.stage{padding:0;overflow:visible}.paper{transform:none;box-shadow:none}.selbox,.handle{display:none!important}.node.sel{outline:none;background:none}.wm{display:none!important}}'
+          if old not in s: raise SystemExit('Original print CSS block not found')
+          s=s.replace(old,new,1)
+          old2='@media print{.subhealth-halfpage-mode .paper{width:210mm!important;height:148.5mm!important;box-shadow:none}.subhealth-halfpage-mode .stage{padding:0;overflow:visible}.subhealth-halfpage-mode .node.sel{outline:none;background:none}}'
+          new2='@media print{.subhealth-halfpage-mode{page:subhealthHalfPage}.subhealth-halfpage-mode .paper{width:210mm!important;height:148.5mm!important;box-shadow:none;page:subhealthHalfPage}.subhealth-halfpage-mode .stage{padding:0;overflow:visible}.subhealth-halfpage-mode .node.sel{outline:none;background:none}}'
+          if old2 not in s: raise SystemExit('Original half-page print rule not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          if git diff --cached --quiet; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'Half-page print CSS already present'
+          else
+            git commit -m 'fix: set subhealth print page to half A4'
+            git push
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            echo 'Committed half-page print CSS fix'
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -26,22 +57,27 @@ jobs:
         run: |
           python - <<'PY'
           import time, urllib.request
-          target='https://stubborn0512.github.io/medical-emr-editor/signature.js'
-          expected='https://cdnjs.cloudflare.com/ajax/libs/fontsource-ma-shan-zheng/5.3.1/chinese-simplified.css'
+          js='https://stubborn0512.github.io/medical-emr-editor/signature.js'
+          html='https://stubborn0512.github.io/medical-emr-editor/'
+          expected_font='https://cdnjs.cloudflare.com/ajax/libs/fontsource-ma-shan-zheng/5.3.1/chinese-simplified.css'
+          expected_print='@page subhealthHalfPage{size:210mm 148.5mm;margin:0}'
           last=''
-          for i in range(36):
+          for i in range(48):
               try:
-                  req=urllib.request.Request(target,headers={'Cache-Control':'no-cache'})
-                  body=urllib.request.urlopen(req,timeout=15).read().decode('utf-8','ignore')
-                  if expected in body:
-                      print(f'Pages is serving the expected signature.js after {i+1} checks')
+                  def get(url):
+                      req=urllib.request.Request(url,headers={'Cache-Control':'no-cache'})
+                      return urllib.request.urlopen(req,timeout=15).read().decode('utf-8','ignore')
+                  jb=get(js)
+                  hb=get(html)
+                  if expected_font in jb and expected_print in hb:
+                      print(f'Pages is serving the expected signature.js and half-page print CSS after {i+1} checks')
                       break
-                  last='signature.js is reachable but still old'
+                  last='Pages reachable but one or more new assets are not live yet'
               except Exception as e:
                   last=str(e)
               time.sleep(5)
           else:
-              raise SystemExit('GitHub Pages did not serve the new signature.js in time: '+last)
+              raise SystemExit('GitHub Pages did not serve the new signature.js + print CSS in time: '+last)
           PY
       - name: Smoke test deployed site
         env:
@@ -95,7 +131,7 @@ jobs:
           await page.screenshot({path:'artifacts/handwriting-signature.png'});
           await page.emulateMedia({media:'print'});
           await page.pdf({path:'artifacts/skin-halfpage.pdf',printBackground:true,preferCSSPageSize:true});
-          console.log({title:await page.title(),skinActive:active,paperWidth,paperHeight,overflow,defaultSignStyle,defaultFontLoaded,selectedFont,signStyle,fontLoaded,errors});
+          console.log({title:await page.title(),skinActive:active,paperWidth,paperHeight,overflow,bodyClass:await page.locator('body').getAttribute('class'),defaultSignStyle,defaultFontLoaded,selectedFont,signStyle,fontLoaded,errors});
           if(errors.length) throw new Error(errors.join(' | '));
           if(signStyle.marker!=='1') throw new Error('Handwriting signature marker missing');
           if(!signStyle.inline.includes('Ma Shan Zheng')) throw new Error('Signature inline font family is not Ma Shan Zheng');
