@@ -59,12 +59,13 @@ function addButton(){
   b.onclick=async()=>{await loadFonts();ensureModal();const el=findSign();const m=document.getElementById('sigModal');if(el){document.getElementById('sigText').value=cleanName(el.textContent);const fam=el.style.fontFamily;document.getElementById('sigFont').value=FONTS.find(f=>fam.includes(f.family))?.family||FONTS[0].family;document.getElementById('sigSize').value=parseInt(el.style.fontSize)||28;const rr=el.style.transform.match(/rotate\(([-\d.]+)deg\)/);document.getElementById('sigAngle').value=rr?parseFloat(rr[1]):-2;document.getElementById('sigSpacing').value=parseFloat(el.style.letterSpacing)||0;document.getElementById('sigPreview').textContent=cleanName(el.textContent)}m.classList.add('show')};
   const printBtn=document.getElementById('print');(printBtn?.parentElement||top).insertBefore(b,printBtn||null);
 }
-function observePaper(){
-  const paper=document.getElementById('paper');if(!paper)return;
-  const ensure=()=>{const el=findSign();if(el&&el.dataset.handwritingSignature!=='1')applyDefault(el)};
+function observeEditor(){
+  const host=document.getElementById('stagein')||document.body;
+  let pending=new WeakSet();
+  const ensure=()=>{const el=findSign();if(!el||el.dataset.handwritingSignature==='1'||pending.has(el))return;pending.add(el);applyDefault(el).finally(()=>pending.delete(el))};
   ensure();
-  new MutationObserver(()=>{ensure()}).observe(paper,{childList:true,subtree:true});
+  new MutationObserver(()=>queueMicrotask(ensure)).observe(host,{childList:true,subtree:true});
 }
-function boot(){addButton();ensureModal();observePaper();applyDefault()}
+function boot(){addButton();ensureModal();observeEditor()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
