@@ -104,6 +104,28 @@ jobs:
               print('Robust close handler already present')
           PY
 
+      - name: Fix print page sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          old = '@media print{@page{size:216mm 313.5mm;margin:0}html,body{overflow:visible;background:#fff}.top,.left,.right{display:none!important}.grid{display:block;height:auto}.stage{padding:0;overflow:visible}.paper{transform:none;box-shadow:none}.selbox,.handle{display:none!important}.node.sel{outline:none;background:none}.wm{display:none!important}}'
+          new = '@media print{@page a4Paper{size:210mm 297mm;margin:0}@page subhealthHalfPage{size:210mm 148.5mm;margin:0}html,body{overflow:visible;background:#fff}.top,.left,.right{display:none!important}.grid{display:block;height:auto}.stage{padding:0;overflow:visible}.paper{transform:none;box-shadow:none;page:a4Paper}.selbox,.handle{display:none!important}.node.sel{outline:none;background:none}.wm{display:none!important}}'
+          if old not in s:
+              raise SystemExit('Expected original print CSS block was not found')
+          s = s.replace(old, new, 1)
+          old_half = '.subhealth-halfpage-mode .paper{width:210mm!important;height:148.5mm!important;box-shadow:none}'
+          new_half = '.subhealth-halfpage-mode .paper{width:210mm!important;height:148.5mm!important;box-shadow:none;page:subhealthHalfPage}'
+          if old_half not in s:
+              raise SystemExit('Expected half-page print rule was not found')
+          s = s.replace(old_half, new_half, 1)
+          p.write_text(s, encoding='utf-8')
+          print('Print page CSS fixed: A4=210x297mm, subhealth=210x148.5mm')
+          PY
+
       - name: Validate repaired app
         shell: bash
         run: |
@@ -121,6 +143,8 @@ jobs:
           test -f smart-identify.js
           node --check smart-identify.js
           grep -q 'Robust smart modal close fix' index.html
+          grep -q '@page subhealthHalfPage' index.html
+          grep -q 'page:subhealthHalfPage' index.html
           echo 'Editor validation passed'
 
       - name: Commit repaired app only
@@ -134,5 +158,5 @@ jobs:
             echo 'No app changes needed'
             exit 0
           fi
-          git commit -m 'fix: close smart identify modal reliably'
+          git commit -m 'fix: print subhealth templates at half-page size'
           git push
