@@ -39,7 +39,7 @@ jobs:
             echo 'Half-page print CSS already present'
           else
             git commit -m 'fix: set subhealth print page to half A4'
-            git push
+            git push origin HEAD:main
             echo 'changed=true' >> "$GITHUB_OUTPUT"
             echo 'Committed half-page print CSS fix'
           fi
